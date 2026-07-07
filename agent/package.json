@@ -1,0 +1,21 @@
+{
+  "name": "kurari-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Kurari Agent — ローカルで Copilot CLI を実行するAIジョブワーカー",
+  "bin": {
+    "kurari-agent": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.9.3"
+  }
+}
