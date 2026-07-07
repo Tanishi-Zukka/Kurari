@@ -1,0 +1,29 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: kurari-backend
+  datasource:
+    url: jdbc:postgresql://localhost:5432/kurari
+    username: kurari
+    password: kurari
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+kurari:
+  ai:
+    # true のとき、Agent 不在でもジョブをダミー応答で即完了させる（開発用）
+    mock: true
+    # Agent の heartbeat がこの秒数途絶えたら offline 扱い
+    agent-offline-after-seconds: 90
+    # claimed のままこの秒数経過したジョブを pending に戻す
+    job-timeout-seconds: 120
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
