@@ -1,6 +1,7 @@
 services:
   db:
-    image: postgres:16-alpine
+    # Docker公式イメージのECR Publicミラー（Docker Hubが不安定な環境でも取得できるため）
+    image: public.ecr.aws/docker/library/postgres:16-alpine
     container_name: kurari-db
     environment:
       POSTGRES_USER: kurari

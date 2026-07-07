@@ -29,6 +29,8 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:2.8.9")
     runtimeOnly("org.postgresql:postgresql")
+    // Docker が使えない環境向けのフォールバック（--spring.profiles.active=embedded）
+    implementation("io.zonky.test:embedded-postgres:2.1.0")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
