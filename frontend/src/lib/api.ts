@@ -34,7 +34,7 @@ export const api = {
   listNodes: (workspaceId: string) => request<KNode[]>(`/api/nodes?workspaceId=${workspaceId}`),
   upsertNode: (body: UpsertNodeRequest) =>
     request<KNode>('/api/nodes', { method: 'POST', body: JSON.stringify(body) }),
-  patchNode: (id: string, body: { name?: string; parentId?: string; data?: Record<string, unknown> }) =>
+  patchNode: (id: string, body: { name?: string; parentId?: string; orderKey?: string; data?: Record<string, unknown> }) =>
     request<KNode>(`/api/nodes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteNode: (id: string) => request<void>(`/api/nodes/${id}`, { method: 'DELETE' }),
 

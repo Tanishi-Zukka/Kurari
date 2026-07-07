@@ -7,7 +7,7 @@ import type { TreeItem } from './TreeView'
 import type { NodeType } from '@/types/model'
 import {
   Boxes, Folder, LayoutDashboard, StickyNote, MessageSquare, Sparkles,
-  FileText, ChevronRight, ChevronDown, Trash2, Layers,
+  FileText, ChevronRight, ChevronDown, Trash2, Layers, Hash,
 } from 'lucide-react'
 
 const ICONS: Partial<Record<NodeType, typeof Boxes>> = {
@@ -18,6 +18,7 @@ const ICONS: Partial<Record<NodeType, typeof Boxes>> = {
   comment: MessageSquare,
   ai_summary: Sparkles,
   document: FileText,
+  block: Hash,
   group: Layers,
 }
 
@@ -33,6 +34,8 @@ export function TreeNodeRow({ item }: { item: TreeItem }) {
   const selectedIds = useUiStore((s) => s.selectedIds)
   const setSelected = useUiStore((s) => s.setSelected)
   const setActiveBoard = useUiStore((s) => s.setActiveBoard)
+  const setActiveDoc = useUiStore((s) => s.setActiveDoc)
+  const requestDocScroll = useUiStore((s) => s.requestDocScroll)
   const setPanelTab = useUiStore((s) => s.setPanelTab)
   const updateNode = useEntityStore((s) => s.updateNode)
   const removeNode = useEntityStore((s) => s.removeNode)
@@ -54,6 +57,24 @@ export function TreeNodeRow({ item }: { item: TreeItem }) {
       setActiveBoard(node.parentId)
       setSelected([node.id], { pan: true })
       navigate('/board')
+      return
+    }
+    if (node.type === 'document') {
+      setActiveDoc(node.id)
+      setSelected([node.id])
+      navigate('/doc')
+      return
+    }
+    if (node.type === 'block' && node.parentId) {
+      // ドキュメント見出し: 親ドキュメントを開き、該当ブロックへスクロール
+      setActiveDoc(node.parentId)
+      setSelected([node.parentId])
+      navigate('/doc')
+      const blockId = node.data.blockId
+      if (typeof blockId === 'string') {
+        // エディタのマウントを待ってからスクロール要求
+        window.setTimeout(() => requestDocScroll(blockId), 150)
+      }
       return
     }
     if (node.type === 'comment') {

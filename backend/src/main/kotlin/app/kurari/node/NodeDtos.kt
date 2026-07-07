@@ -43,6 +43,7 @@ data class UpsertNodeRequest(
 data class PatchNodeRequest(
     val name: String? = null,
     val parentId: UUID? = null,
+    val orderKey: String? = null,
     /** data は shallow merge（キー単位で上書き。値が null のキーは削除） */
     val data: Map<String, Any?>? = null,
 )

@@ -11,6 +11,9 @@
     "gen:api": "openapi-typescript http://localhost:8080/v3/api-docs -o src/types/api.d.ts"
   },
   "dependencies": {
+    "@blocknote/core": "^0.51.4",
+    "@blocknote/mantine": "^0.51.4",
+    "@blocknote/react": "^0.51.4",
     "@tailwindcss/vite": "^4.3.2",
     "@xyflow/react": "^12.11.2",
     "clsx": "^2.1.1",

@@ -9,7 +9,8 @@ import { StatusBar } from '@/components/layout/StatusBar'
 import { TreeView } from '@/components/sidebar/TreeView'
 import { ContextPanel } from '@/components/panel/ContextPanel'
 import { BoardMode } from '@/components/board/BoardMode'
-import { AiModePlaceholder, CallPlaceholder, DocPlaceholder } from '@/components/modes/Placeholders'
+import { DocumentMode } from '@/components/doc/DocumentMode'
+import { AiModePlaceholder, CallPlaceholder } from '@/components/modes/Placeholders'
 
 export default function App() {
   const load = useEntityStore((s) => s.load)
@@ -65,7 +66,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/board" replace />} />
             <Route path="/board" element={<BoardMode />} />
-            <Route path="/doc" element={<DocPlaceholder />} />
+            <Route path="/doc" element={<DocumentMode />} />
             <Route path="/ai" element={<AiModePlaceholder />} />
             <Route path="/call" element={<CallPlaceholder />} />
           </Routes>

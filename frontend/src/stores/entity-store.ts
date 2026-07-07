@@ -16,7 +16,7 @@ interface EntityState {
     orderKey?: string
     data?: Record<string, unknown>
   }) => Promise<KNode>
-  updateNode: (id: string, patch: { name?: string; data?: Record<string, unknown> }) => Promise<void>
+  updateNode: (id: string, patch: { name?: string; orderKey?: string; data?: Record<string, unknown> }) => Promise<void>
   removeNode: (id: string) => Promise<void>
   applyServerEvent: (ev: ServerEvent) => void
 }
@@ -89,6 +89,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     const optimistic: KNode = {
       ...prev,
       name: patch.name ?? prev.name,
+      orderKey: patch.orderKey ?? prev.orderKey,
       data: patch.data ? { ...prev.data, ...patch.data } : prev.data,
       updatedAt: new Date().toISOString(),
     }

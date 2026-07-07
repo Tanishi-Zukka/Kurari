@@ -27,8 +27,8 @@ try {
   )
   ok('付箋作成 → 左ツリーに即時反映')
 
-  // 3. 付箋を編集（ダブルクリック → 入力 → blur）
-  const sticky = page.locator('.react-flow__node').last()
+  // 3. 付箋を編集（ダブルクリック → 入力 → blur）— 直前に作った空付箋を狙う
+  const sticky = page.locator('.react-flow__node', { hasText: 'ダブルクリックで編集' }).first()
   await sticky.dblclick()
   await page.keyboard.type('スモークテスト付箋')
   await page.locator('.react-flow__pane').click({ position: { x: 40, y: 40 } })
@@ -69,14 +69,44 @@ try {
   await page.locator('[data-tree-id]', { hasText: 'AI Outputs' }).first().waitFor()
   ok('リロード後もデータが残る（永続化）')
 
-  // 10. モード切替（プレースホルダー表示）
-  await page.getByRole('link', { name: /Doc/ }).click()
-  await page.getByText('Document Mode').first().waitFor()
+  // 10. モード切替（Callプレースホルダー表示）
   await page.getByRole('link', { name: /Call/ }).click()
   await page.getByText('Call Mode').first().waitFor()
   await page.getByRole('link', { name: /Board/ }).click()
   await page.getByText('スモークテスト付箋').first().waitFor()
-  ok('モード切替トグル（Doc/Call プレースホルダー → Board復帰）')
+  ok('モード切替トグル（Call プレースホルダー → Board復帰）')
+
+  // 11. Document Mode: ドキュメント作成 → タイトル変更
+  await page.getByRole('link', { name: /Doc/ }).click()
+  await page.getByRole('button', { name: /新規ドキュメント/ }).click()
+  await page.getByPlaceholder('無題のドキュメント').fill('スモーク設計メモ')
+  await page.keyboard.press('Enter')
+  await page.locator('[data-tree-id]', { hasText: 'スモーク設計メモ' }).first().waitFor()
+  ok('ドキュメント作成 → タイトルがツリーに反映')
+
+  // 12. 見出し入力 → ツリーに見出しが出る
+  await page.locator('.bn-editor').click()
+  await page.keyboard.type('# 設計方針')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('本文のテキストです')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('## 決定事項')
+  await page.locator('[data-tree-id]', { hasText: '設計方針' }).first().waitFor({ timeout: 10000 })
+  await page.locator('[data-tree-id]', { hasText: '決定事項' }).first().waitFor()
+  ok('見出し(h1/h2)が左ツリーに同期')
+
+  // 13. リロード → 本文・見出しツリーが残る（永続化）
+  await page.reload()
+  await page.getByRole('link', { name: /Doc/ }).click()
+  await page.getByRole('button', { name: 'スモーク設計メモ' }).click()
+  await page.getByText('本文のテキストです').first().waitFor()
+  await page.locator('[data-tree-id]', { hasText: '決定事項' }).first().waitFor()
+  ok('ドキュメント本文と見出しツリーがリロード後も残る')
+
+  // 14. ツリーの見出しクリック → 該当ドキュメントが開く
+  await page.locator('[data-tree-id]', { hasText: '設計方針' }).first().click()
+  await page.getByText('本文のテキストです').first().waitFor()
+  ok('ツリーの見出しクリック → 該当ドキュメントを表示')
 } catch (e) {
   ng('スモークテスト', e.message?.split('\n')[0])
   await page.screenshot({ path: new URL('./smoke-failure.png', import.meta.url).pathname })

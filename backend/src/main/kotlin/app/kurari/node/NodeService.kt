@@ -62,6 +62,7 @@ class NodeService(
         }
         req.name?.let { entity.name = it }
         req.parentId?.let { entity.parentId = it }
+        req.orderKey?.let { entity.orderKey = it }
         req.data?.forEach { (k, v) ->
             if (v == null) entity.data.remove(k) else entity.data[k] = v
         }

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { FileText, Sparkles, Phone } from 'lucide-react'
+import { Sparkles, Phone } from 'lucide-react'
 
 function Placeholder({
   icon,
@@ -32,21 +32,6 @@ function Placeholder({
         </ul>
       </div>
     </div>
-  )
-}
-
-export function DocPlaceholder() {
-  return (
-    <Placeholder
-      icon={<FileText size={18} />}
-      title="Document Mode"
-      description="Notionのようなブロックエディタ。ボードの付箋を参照埋め込みでき、構成が左のツリーに反映されます。"
-      bullets={[
-        'BlockNote ベースのブロック編集',
-        '付箋 → ドキュメント変換',
-        'AIによる議事録・仕様書ドラフト生成',
-      ]}
-    />
   )
 }
 
