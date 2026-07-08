@@ -1,14 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useCreateBlockNote } from '@blocknote/react'
+import {
+  useCreateBlockNote,
+  SuggestionMenuController,
+  getDefaultReactSlashMenuItems,
+} from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/mantine'
-import type { Block, PartialBlock } from '@blocknote/core'
+import { BlockNoteSchema, defaultBlockSpecs, filterSuggestionItems } from '@blocknote/core'
 import '@blocknote/core/fonts/inter.css'
 import '@blocknote/mantine/style.css'
 import { childrenOf, useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
-import { syncHeadingBlocks } from '@/lib/doc-sync'
+import { syncHeadingBlocks, type LooseBlock } from '@/lib/doc-sync'
+import { StickyRefBlockSpec, insertStickyRefItem } from './StickyRefBlock'
 import { Button } from '@/components/ui/primitives'
 import { FileText, Plus } from 'lucide-react'
+
+/** stickyRef カスタムブロックを含む Kurari のドキュメントスキーマ */
+const schema = BlockNoteSchema.create({
+  blockSpecs: {
+    ...defaultBlockSpecs,
+    stickyRef: StickyRefBlockSpec(),
+  },
+})
+
 
 /** ドキュメント一覧（未選択時の画面） */
 function DocList() {
@@ -82,33 +96,52 @@ function DocEditor({ docId }: { docId: string }) {
 
   const [title, setTitle] = useState(doc?.name ?? '')
   const saveTimer = useRef<number | undefined>(undefined)
-  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'dirty'>('saved')
+  const [saveState, setSaveStateRaw] = useState<'saved' | 'saving' | 'dirty'>('saved')
+  const saveStateRef = useRef(saveState)
+  const setSaveState = useCallback((s: 'saved' | 'saving' | 'dirty') => {
+    saveStateRef.current = s
+    setSaveStateRaw(s)
+  }, [])
 
   const initialContent = useMemo(() => {
-    const content = doc?.data.content as PartialBlock[] | undefined
+    const content = doc?.data.content as LooseBlock[] | undefined
     return content && content.length > 0 ? content : undefined
   }, []) // eslint-disable-line react-hooks/exhaustive-deps -- マウント時のみ
 
-  const editor = useCreateBlockNote({ initialContent })
+  const editor = useCreateBlockNote({
+    schema,
+    // JSONから復元するため型は緩く扱う（スキーマ検証はBlockNote側が行う）
+    initialContent: initialContent as never,
+  })
+
+  // 保存本体（デバウンスから、またはアンマウント時のフラッシュから呼ばれる）
+  const doSave = useCallback(async () => {
+    setSaveState('saving')
+    const blocks = editor.document as unknown as LooseBlock[]
+    try {
+      await updateNode(docId, { data: { content: blocks } })
+      await syncHeadingBlocks(docId, blocks)
+      setSaveState('saved')
+    } catch {
+      setSaveState('dirty')
+    }
+  }, [editor, docId, updateNode, setSaveState])
 
   // デバウンス保存＋見出しツリー同期
   const scheduleSave = useCallback(() => {
     setSaveState('dirty')
     window.clearTimeout(saveTimer.current)
-    saveTimer.current = window.setTimeout(async () => {
-      setSaveState('saving')
-      const blocks = editor.document as Block[]
-      try {
-        await updateNode(docId, { data: { content: blocks } })
-        await syncHeadingBlocks(docId, blocks)
-        setSaveState('saved')
-      } catch {
-        setSaveState('dirty')
-      }
-    }, 800)
-  }, [editor, docId, updateNode])
+    saveTimer.current = window.setTimeout(() => void doSave(), 800)
+  }, [doSave, setSaveState])
 
-  useEffect(() => () => window.clearTimeout(saveTimer.current), [])
+  // アンマウント時: 保留中の変更を破棄せず即時フラッシュ（SPA内のドキュメント切替用）
+  useEffect(
+    () => () => {
+      window.clearTimeout(saveTimer.current)
+      if (saveStateRef.current !== 'saved') void doSave()
+    },
+    [doSave],
+  )
 
   // ツリーの見出しクリック → 該当ブロックへスクロール
   useEffect(() => {
@@ -152,7 +185,17 @@ function DocEditor({ docId }: { docId: string }) {
         />
       </div>
       <div className="mx-auto w-full max-w-3xl flex-1 px-4 pb-16">
-        <BlockNoteView editor={editor} theme="light" onChange={scheduleSave} />
+        <BlockNoteView editor={editor} theme="light" onChange={scheduleSave} slashMenu={false}>
+          <SuggestionMenuController
+            triggerCharacter="/"
+            getItems={async (query) =>
+              filterSuggestionItems(
+                [...getDefaultReactSlashMenuItems(editor), insertStickyRefItem(editor)],
+                query,
+              )
+            }
+          />
+        </BlockNoteView>
       </div>
     </div>
   )

@@ -5,9 +5,9 @@ import {
   Background,
   Controls,
   useReactFlow,
+  useNodesInitialized,
   type Node as FlowNode,
   type NodeChange,
-  type OnSelectionChangeParams,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { childrenOf, useEntityStore } from '@/stores/entity-store'
@@ -31,6 +31,7 @@ function BoardCanvas() {
   const clearPanRequest = useUiStore((s) => s.clearPanRequest)
 
   const { setCenter, screenToFlowPosition } = useReactFlow()
+  const nodesInitialized = useNodesInitialized()
 
   // ストア → React Flow ノード（controlled）
   const flowNodes: FlowNode[] = useMemo(() => {
@@ -51,48 +52,60 @@ function BoardCanvas() {
       })
   }, [nodes, activeBoardId, selectedIds])
 
-  // ツリー側からのパン要求
+  // ツリー側からのパン要求。
+  // React Flow の初期化（ノード計測）が済む前に setCenter を呼ぶと
+  // 内部ストアが無限再レンダリングに陥るため、nodesInitialized を待つ。
   useEffect(() => {
-    if (!panRequestId) return
+    if (!panRequestId || !nodesInitialized) return
     const target = nodes[panRequestId]
     if (target && target.type === 'sticky') {
       const d = stickyData(target)
       setCenter(d.x + d.w / 2, d.y + d.h / 2, { zoom: 1.1, duration: 400 })
     }
     clearPanRequest()
-  }, [panRequestId, nodes, setCenter, clearPanRequest])
+  }, [panRequestId, nodesInitialized, nodes, setCenter, clearPanRequest])
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // ドラッグ中の position 変化は React Flow 側の見た目のみ反映される（controlledのため
-      // 自前ストアを即時更新して追従させる。永続化はドラッグ終了時の onNodeDragStop）
-      for (const change of changes) {
-        if (change.type === 'position' && change.position && !change.dragging) {
-          // 終了時は onNodeDragStop で処理
-        }
-      }
-      // 位置のライブ反映: dragging中はローカルstateだけ更新したいが、controlledでは
-      // ストアを経由する必要がある。ここでは applyNodeChanges 相当を data.x/y に反映。
-      const positionChanges = changes.filter(
-        (c): c is Extract<NodeChange, { type: 'position' }> => c.type === 'position' && !!c.position,
+      // controlled運用: ユーザー操作由来の変更のみストアへ反映する。
+      // マウント/レイアウト時の position イベントや、内部リコンサイルの選択イベントを
+      // 書き戻すと store→ReactFlow→store の無限ループになるため扱わない。
+      // （選択は onSelectionChange ではなく、ここの 'select' 変更だけで同期する）
+
+      // 1) ドラッグ中の位置をライブ反映（永続化はドラッグ終了時の onNodeDragStop）
+      const dragChanges = changes.filter(
+        (c): c is Extract<NodeChange, { type: 'position' }> =>
+          c.type === 'position' && !!c.position && c.dragging === true,
       )
-      if (positionChanges.length > 0) {
-        const state = useEntityStore.getState()
-        for (const c of positionChanges) {
-          const n = state.nodes[c.id]
-          if (n) {
-            // ローカルのみ更新（API呼び出しなし）
-            useEntityStore.setState((s) => ({
-              nodes: {
-                ...s.nodes,
-                [c.id]: { ...n, data: { ...n.data, x: c.position!.x, y: c.position!.y } },
-              },
-            }))
+      if (dragChanges.length > 0) {
+        useEntityStore.setState((s) => {
+          const next = { ...s.nodes }
+          for (const c of dragChanges) {
+            const n = next[c.id]
+            if (n) next[c.id] = { ...n, data: { ...n.data, x: c.position!.x, y: c.position!.y } }
           }
+          return { nodes: next }
+        })
+      }
+
+      // 2) ユーザーのクリック等による選択変更
+      const selectChanges = changes.filter(
+        (c): c is Extract<NodeChange, { type: 'select' }> => c.type === 'select',
+      )
+      if (selectChanges.length > 0) {
+        const current = useUiStore.getState().selectedIds
+        const next = new Set(current)
+        for (const c of selectChanges) {
+          if (c.selected) next.add(c.id)
+          else next.delete(c.id)
         }
+        const nextIds = [...next]
+        const same =
+          nextIds.length === current.length && nextIds.every((id) => current.includes(id))
+        if (!same) setSelected(nextIds)
       }
     },
-    [],
+    [setSelected],
   )
 
   const onNodeDragStop = useCallback(
@@ -100,16 +113,6 @@ function BoardCanvas() {
       void updateNode(node.id, { data: { x: node.position.x, y: node.position.y } })
     },
     [updateNode],
-  )
-
-  const onSelectionChange = useCallback(
-    ({ nodes: sel }: OnSelectionChangeParams) => {
-      const ids = sel.map((n) => n.id)
-      const current = useUiStore.getState().selectedIds
-      if (ids.length === current.length && ids.every((id) => current.includes(id))) return
-      setSelected(ids)
-    },
-    [setSelected],
   )
 
   const createSticky = useCallback(
@@ -158,7 +161,6 @@ function BoardCanvas() {
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onNodeDragStop={onNodeDragStop}
-        onSelectionChange={onSelectionChange}
         onNodesDelete={onNodesDelete}
         onDoubleClick={onPaneDoubleClick}
         zoomOnDoubleClick={false}

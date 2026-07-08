@@ -1,4 +1,3 @@
-import type { Block } from '@blocknote/core'
 import { childrenOf, useEntityStore } from '@/stores/entity-store'
 
 export interface HeadingInfo {
@@ -7,19 +6,28 @@ export interface HeadingInfo {
   level: number
 }
 
+/** カスタムスキーマにも対応するため、構造だけを見る緩い型 */
+export interface LooseBlock {
+  id: string
+  type: string
+  props?: Record<string, unknown>
+  content?: unknown
+  children?: LooseBlock[]
+}
+
 /** BlockNote のブロック列から見出し(h1-h3)を抽出する */
-export function extractHeadings(blocks: Block[]): HeadingInfo[] {
+export function extractHeadings(blocks: LooseBlock[]): HeadingInfo[] {
   const result: HeadingInfo[] = []
-  const walk = (items: Block[]) => {
+  const walk = (items: LooseBlock[]) => {
     for (const b of items) {
       if (b.type === 'heading') {
         const text = Array.isArray(b.content)
-          ? b.content.map((c) => ('text' in c ? c.text : '')).join('')
+          ? b.content.map((c: { text?: string }) => c.text ?? '').join('')
           : ''
-        const level = (b.props as { level?: number }).level ?? 1
+        const level = (b.props as { level?: number } | undefined)?.level ?? 1
         if (text.trim()) result.push({ blockId: b.id, text: text.trim(), level })
       }
-      if (b.children?.length) walk(b.children as Block[])
+      if (b.children?.length) walk(b.children)
     }
   }
   walk(blocks)
@@ -30,7 +38,7 @@ export function extractHeadings(blocks: Block[]): HeadingInfo[] {
  * ドキュメントの見出しを、document 配下の block ノードとしてツリーに同期する。
  * data.blockId でBlockNoteのブロックと対応づけ、追加・改名・並び・削除を反映する。
  */
-export async function syncHeadingBlocks(docId: string, blocks: Block[]): Promise<void> {
+export async function syncHeadingBlocks(docId: string, blocks: LooseBlock[]): Promise<void> {
   const { nodes, createNode, updateNode, removeNode } = useEntityStore.getState()
   const headings = extractHeadings(blocks)
   const existing = childrenOf(nodes, docId).filter((n) => n.type === 'block')

@@ -107,6 +107,46 @@ try {
   await page.locator('[data-tree-id]', { hasText: '設計方針' }).first().click()
   await page.getByText('本文のテキストです').first().waitFor()
   ok('ツリーの見出しクリック → 該当ドキュメントを表示')
+
+  // 15. スラッシュメニューから付箋参照ブロックを挿入
+  await page.getByText('決定事項', { exact: true }).last().click()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('/付箋')
+  await page.getByText('付箋を埋め込む').first().click()
+  await page.getByText('埋め込む付箋を選択').first().waitFor()
+  await page.getByRole('button', { name: /Kurariへようこそ/ }).first().click()
+  await page.locator('.bn-editor').getByText('付箋の参照', { exact: false }).first().waitFor()
+  await page.locator('.bn-editor').getByText('Kurariへようこそ', { exact: false }).first().waitFor()
+  ok('スラッシュメニュー → 付箋参照ブロック挿入（ピッカーで選択）')
+
+  // 16. ライブ参照: 付箋をAPI経由で編集 → ドキュメント内の表示が追従
+  const all = await (await fetch('http://localhost:8080/api/nodes?workspaceId=00000000-0000-0000-0000-000000000001')).json()
+  const welcome = all.find((n) => n.type === 'sticky' && n.name.includes('Kurariへようこそ'))
+  await fetch(`http://localhost:8080/api/nodes/${welcome.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: { text: welcome.data.text + '（ライブ更新）' } }),
+  })
+  await page.locator('.bn-editor').getByText('（ライブ更新）').first().waitFor({ timeout: 10000 })
+  // 元に戻す
+  await fetch(`http://localhost:8080/api/nodes/${welcome.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: { text: welcome.data.text } }),
+  })
+  ok('付箋参照はライブ（ボード側の編集がWS経由でドキュメントに反映）')
+
+  // 17. リロード後も参照ブロックが残り、クリックでボードの該当付箋へ移動
+  await page.getByText('保存済み', { exact: true }).waitFor({ timeout: 10000 }) // 自動保存の完了を待つ
+  await page.reload()
+  await page.getByRole('link', { name: /Doc/ }).click()
+  await page.getByRole('button', { name: 'スモーク設計メモ' }).click()
+  const refBlock = page.locator('.bn-editor').getByText('付箋の参照', { exact: false }).first()
+  await refBlock.waitFor()
+  await refBlock.click()
+  await page.locator('.react-flow__node', { hasText: 'Kurariへようこそ' }).first().waitFor()
+  ok('参照ブロックの永続化とクリックでボードへジャンプ')
 } catch (e) {
   ng('スモークテスト', e.message?.split('\n')[0])
   await page.screenshot({ path: new URL('./smoke-failure.png', import.meta.url).pathname })
