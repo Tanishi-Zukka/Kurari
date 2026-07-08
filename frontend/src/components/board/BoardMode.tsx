@@ -4,25 +4,40 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
+  ConnectionMode,
+  MarkerType,
   useReactFlow,
   useNodesInitialized,
   type Node as FlowNode,
+  type Edge as FlowEdge,
   type NodeChange,
+  type Connection,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { childrenOf, useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
-import { StickyNode, stickyNameFrom } from './StickyNode'
-import { BoardToolbar } from './BoardToolbar'
-import { stickyData, type StickyColor } from '@/types/model'
+import { StickyNode, TextCardNode, ShapeNode, stickyNameFrom } from './BoardNodes'
+import { BoardToolbar, type NewItemKind } from './BoardToolbar'
+import { stickyData, BOARD_ITEM_TYPES, type StickyColor, type NodeType } from '@/types/model'
 
-const nodeTypes = { sticky: StickyNode }
+const nodeTypes = { sticky: StickyNode, text_card: TextCardNode, shape: ShapeNode }
+
+/** 種別ごとの新規作成時デフォルト */
+const ITEM_DEFAULTS: Record<string, { w: number; h: number; data: Record<string, unknown> }> = {
+  sticky: { w: 220, h: 120, data: {} },
+  text_card: { w: 240, h: 60, data: {} },
+  rect: { w: 180, h: 100, data: { kind: 'rect' } },
+  ellipse: { w: 160, h: 110, data: { kind: 'ellipse' } },
+}
 
 function BoardCanvas() {
   const nodes = useEntityStore((s) => s.nodes)
+  const edges = useEntityStore((s) => s.edges)
   const updateNode = useEntityStore((s) => s.updateNode)
   const removeNode = useEntityStore((s) => s.removeNode)
   const createNode = useEntityStore((s) => s.createNode)
+  const createEdge = useEntityStore((s) => s.createEdge)
+  const removeEdge = useEntityStore((s) => s.removeEdge)
 
   const activeBoardId = useUiStore((s) => s.activeBoardId)
   const selectedIds = useUiStore((s) => s.selectedIds)
@@ -37,14 +52,14 @@ function BoardCanvas() {
   const flowNodes: FlowNode[] = useMemo(() => {
     if (!activeBoardId) return []
     return childrenOf(nodes, activeBoardId)
-      .filter((n) => n.type === 'sticky')
+      .filter((n) => BOARD_ITEM_TYPES.includes(n.type))
       .map((n) => {
         const d = stickyData(n)
         return {
           id: n.id,
-          type: 'sticky' as const,
+          type: n.type,
           position: { x: d.x, y: d.y },
-          data: { text: d.text, color: d.color },
+          data: { text: d.text, color: d.color, kind: d.kind },
           selected: selectedIds.includes(n.id),
           width: d.w,
           height: d.h,
@@ -52,13 +67,26 @@ function BoardCanvas() {
       })
   }, [nodes, activeBoardId, selectedIds])
 
+  // ストア → React Flow エッジ
+  const flowEdges: FlowEdge[] = useMemo(() => {
+    if (!activeBoardId) return []
+    return Object.values(edges)
+      .filter((e) => e.boardId === activeBoardId)
+      .map((e) => ({
+        id: e.id,
+        source: e.sourceNodeId,
+        target: e.targetNodeId,
+        label: e.label || undefined,
+      }))
+  }, [edges, activeBoardId])
+
   // ツリー側からのパン要求。
   // React Flow の初期化（ノード計測）が済む前に setCenter を呼ぶと
   // 内部ストアが無限再レンダリングに陥るため、nodesInitialized を待つ。
   useEffect(() => {
     if (!panRequestId || !nodesInitialized) return
     const target = nodes[panRequestId]
-    if (target && target.type === 'sticky') {
+    if (target && BOARD_ITEM_TYPES.includes(target.type)) {
       const d = stickyData(target)
       setCenter(d.x + d.w / 2, d.y + d.h / 2, { zoom: 1.1, duration: 400 })
     }
@@ -115,15 +143,36 @@ function BoardCanvas() {
     [updateNode],
   )
 
-  const createSticky = useCallback(
-    async (pos: { x: number; y: number }, color: StickyColor = 'yellow') => {
+  const onConnect = useCallback(
+    (conn: Connection) => {
+      if (!activeBoardId || !conn.source || !conn.target || conn.source === conn.target) return
+      void createEdge({
+        boardId: activeBoardId,
+        sourceNodeId: conn.source,
+        targetNodeId: conn.target,
+      })
+    },
+    [activeBoardId, createEdge],
+  )
+
+  const createItem = useCallback(
+    async (kind: NewItemKind, pos: { x: number; y: number }, color: StickyColor) => {
       if (!activeBoardId) return
-      const text = ''
+      const def = ITEM_DEFAULTS[kind]
+      const type: NodeType = kind === 'rect' || kind === 'ellipse' ? 'shape' : kind
       const node = await createNode({
         parentId: activeBoardId,
-        type: 'sticky',
-        name: stickyNameFrom(text),
-        data: { text, color, x: pos.x, y: pos.y, w: 220, h: 120 },
+        type,
+        name: stickyNameFrom(''),
+        data: {
+          text: '',
+          color,
+          x: pos.x - def.w / 2,
+          y: pos.y - def.h / 2,
+          w: def.w,
+          h: def.h,
+          ...def.data,
+        },
       })
       setSelected([node.id])
     },
@@ -133,9 +182,9 @@ function BoardCanvas() {
   const onPaneDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY })
-      void createSticky({ x: pos.x - 110, y: pos.y - 60 })
+      void createItem('sticky', pos, 'yellow')
     },
-    [screenToFlowPosition, createSticky],
+    [screenToFlowPosition, createItem],
   )
 
   const onNodesDelete = useCallback(
@@ -143,6 +192,13 @@ function BoardCanvas() {
       for (const n of deleted) void removeNode(n.id)
     },
     [removeNode],
+  )
+
+  const onEdgesDelete = useCallback(
+    (deleted: FlowEdge[]) => {
+      for (const e of deleted) void removeEdge(e.id)
+    },
+    [removeEdge],
   )
 
   if (!activeBoardId) {
@@ -157,12 +213,19 @@ function BoardCanvas() {
     <div className="relative h-full w-full">
       <ReactFlow
         nodes={flowNodes}
-        edges={[]}
+        edges={flowEdges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onNodeDragStop={onNodeDragStop}
         onNodesDelete={onNodesDelete}
+        onEdgesDelete={onEdgesDelete}
+        onConnect={onConnect}
         onDoubleClick={onPaneDoubleClick}
+        connectionMode={ConnectionMode.Loose}
+        defaultEdgeOptions={{
+          markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
+          style: { strokeWidth: 1.8 },
+        }}
         zoomOnDoubleClick={false}
         fitView
         proOptions={{ hideAttribution: false }}
@@ -171,16 +234,17 @@ function BoardCanvas() {
         <Background gap={20} size={1.5} />
         <Controls showInteractive={false} />
       </ReactFlow>
-      <BoardToolbar onCreate={(color) => {
-        // ビューポート中央に作成
-        const el = document.querySelector('.react-flow')
-        const rect = el?.getBoundingClientRect()
-        const center = rect
-          ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-          : { x: window.innerWidth / 2, y: window.innerHeight / 2 }
-        const pos = screenToFlowPosition(center)
-        void createSticky({ x: pos.x - 110, y: pos.y - 60 }, color)
-      }} />
+      <BoardToolbar
+        onCreate={(kind, color) => {
+          // ビューポート中央に作成
+          const el = document.querySelector('.react-flow')
+          const rect = el?.getBoundingClientRect()
+          const center = rect
+            ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+            : { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+          void createItem(kind, screenToFlowPosition(center), color)
+        }}
+      />
     </div>
   )
 }

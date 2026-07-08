@@ -30,7 +30,7 @@ export default function App() {
   // WS 接続
   useEffect(() => {
     const disconnect = connectWs((ev) => {
-      if (ev.type.startsWith('node.')) applyServerEvent(ev)
+      if (ev.type.startsWith('node.') || ev.type.startsWith('edge.')) applyServerEvent(ev)
     }, setWsState)
     return disconnect
   }, [applyServerEvent, setWsState])

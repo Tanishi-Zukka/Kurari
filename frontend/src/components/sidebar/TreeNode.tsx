@@ -4,10 +4,10 @@ import { useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { cn } from '@/lib/utils'
 import type { TreeItem } from './TreeView'
-import type { NodeType } from '@/types/model'
+import { BOARD_ITEM_TYPES, type NodeType } from '@/types/model'
 import {
   Boxes, Folder, LayoutDashboard, StickyNote, MessageSquare, Sparkles,
-  FileText, ChevronRight, ChevronDown, Trash2, Layers, Hash,
+  FileText, ChevronRight, ChevronDown, Trash2, Layers, Hash, Type, Square, Plus,
 } from 'lucide-react'
 
 const ICONS: Partial<Record<NodeType, typeof Boxes>> = {
@@ -15,15 +15,14 @@ const ICONS: Partial<Record<NodeType, typeof Boxes>> = {
   project: Folder,
   board: LayoutDashboard,
   sticky: StickyNote,
+  text_card: Type,
+  shape: Square,
   comment: MessageSquare,
   ai_summary: Sparkles,
   document: FileText,
   block: Hash,
   group: Layers,
 }
-
-/** ボード系ノードか（クリックでボードを開き、パンする対象か） */
-const BOARD_ITEM_TYPES: NodeType[] = ['sticky', 'text_card', 'shape']
 
 export function TreeNodeRow({ item }: { item: TreeItem }) {
   const { node, depth, children } = item
@@ -39,7 +38,26 @@ export function TreeNodeRow({ item }: { item: TreeItem }) {
   const setPanelTab = useUiStore((s) => s.setPanelTab)
   const updateNode = useEntityStore((s) => s.updateNode)
   const removeNode = useEntityStore((s) => s.removeNode)
+  const createNode = useEntityStore((s) => s.createNode)
   const navigate = useNavigate()
+
+  /** プロジェクト行の＋ボタン: ボード/ドキュメントを追加してすぐ開く */
+  const addChild = async (type: 'board' | 'document') => {
+    const created = await createNode({
+      parentId: node.id,
+      type,
+      name: type === 'board' ? '新しいボード' : '無題のドキュメント',
+      data: type === 'document' ? { content: [] } : {},
+    })
+    setSelected([created.id])
+    if (type === 'board') {
+      setActiveBoard(created.id)
+      navigate('/board')
+    } else {
+      setActiveDoc(created.id)
+      navigate('/doc')
+    }
+  }
 
   const Icon = ICONS[node.type] ?? FileText
   const selected = selectedIds.includes(node.id)
@@ -144,6 +162,32 @@ export function TreeNodeRow({ item }: { item: TreeItem }) {
           />
         ) : (
           <span className="min-w-0 flex-1 truncate">{node.name || '(untitled)'}</span>
+        )}
+        {node.type === 'project' && !editing && (
+          <span className="invisible flex shrink-0 items-center group-hover:visible">
+            <button
+              className="flex h-5 items-center gap-0.5 rounded px-1 text-[10px] text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700"
+              title="ボードを追加"
+              onClick={(e) => {
+                e.stopPropagation()
+                void addChild('board')
+              }}
+            >
+              <Plus size={10} />
+              <LayoutDashboard size={11} />
+            </button>
+            <button
+              className="flex h-5 items-center gap-0.5 rounded px-1 text-[10px] text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700"
+              title="ドキュメントを追加"
+              onClick={(e) => {
+                e.stopPropagation()
+                void addChild('document')
+              }}
+            >
+              <Plus size={10} />
+              <FileText size={11} />
+            </button>
+          </span>
         )}
         {canDelete && !editing && (
           <button

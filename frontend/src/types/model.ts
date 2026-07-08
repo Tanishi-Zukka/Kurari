@@ -30,6 +30,7 @@ export interface KNode {
 }
 
 export type StickyColor = 'yellow' | 'blue' | 'pink' | 'green'
+export type ShapeKind = 'rect' | 'ellipse'
 
 export interface StickyData {
   text: string
@@ -39,6 +40,25 @@ export interface StickyData {
   w: number
   h: number
 }
+
+/** shape は StickyData + kind、text_card は color を使わない（同じ形で扱う） */
+export interface BoardItemData extends StickyData {
+  kind?: ShapeKind
+}
+
+export interface KEdge {
+  id: string
+  workspaceId: string
+  boardId: string
+  sourceNodeId: string
+  targetNodeId: string
+  label: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** ボードにキャンバス要素として描画されるノード種別 */
+export const BOARD_ITEM_TYPES: NodeType[] = ['sticky', 'text_card', 'shape']
 
 export interface CommentData {
   text: string
@@ -52,11 +72,12 @@ export interface AiSummaryData {
   prompt: string
 }
 
-export function stickyData(node: KNode): StickyData {
-  const d = node.data as Partial<StickyData>
+export function stickyData(node: KNode): BoardItemData {
+  const d = node.data as Partial<BoardItemData>
   return {
     text: d.text ?? '',
     color: d.color ?? 'yellow',
+    kind: d.kind,
     x: d.x ?? 0,
     y: d.y ?? 0,
     w: d.w ?? 220,
@@ -85,4 +106,5 @@ export interface AiStatus {
 
 export type ServerEvent =
   | { type: 'node.created' | 'node.updated' | 'node.deleted'; payload: KNode }
+  | { type: 'edge.created' | 'edge.updated' | 'edge.deleted'; payload: KEdge }
   | { type: 'ai_job.updated'; payload: AiJob }

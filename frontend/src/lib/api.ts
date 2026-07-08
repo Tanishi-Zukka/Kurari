@@ -1,4 +1,4 @@
-import type { AiJob, AiStatus, KNode, NodeType } from '@/types/model'
+import type { AiJob, AiStatus, KEdge, KNode, NodeType } from '@/types/model'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -37,6 +37,11 @@ export const api = {
   patchNode: (id: string, body: { name?: string; parentId?: string; orderKey?: string; data?: Record<string, unknown> }) =>
     request<KNode>(`/api/nodes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteNode: (id: string) => request<void>(`/api/nodes/${id}`, { method: 'DELETE' }),
+
+  listEdges: (workspaceId: string) => request<KEdge[]>(`/api/edges?workspaceId=${workspaceId}`),
+  upsertEdge: (body: Omit<KEdge, 'createdAt' | 'updatedAt'>) =>
+    request<KEdge>('/api/edges', { method: 'POST', body: JSON.stringify(body) }),
+  deleteEdge: (id: string) => request<void>(`/api/edges/${id}`, { method: 'DELETE' }),
 
   aiStatus: () => request<AiStatus>('/api/ai/status'),
   createAiJob: (body: { type: string; boardId: string; prompt?: string }) =>

@@ -1,9 +1,10 @@
 import { create } from 'zustand'
 import { api } from '@/lib/api'
-import type { KNode, NodeType, ServerEvent } from '@/types/model'
+import type { KEdge, KNode, NodeType, ServerEvent } from '@/types/model'
 
 interface EntityState {
   nodes: Record<string, KNode>
+  edges: Record<string, KEdge>
   workspaceId: string | null
   loaded: boolean
   loadError: string | null
@@ -18,6 +19,8 @@ interface EntityState {
   }) => Promise<KNode>
   updateNode: (id: string, patch: { name?: string; orderKey?: string; data?: Record<string, unknown> }) => Promise<void>
   removeNode: (id: string) => Promise<void>
+  createEdge: (input: { boardId: string; sourceNodeId: string; targetNodeId: string; label?: string }) => Promise<void>
+  removeEdge: (id: string) => Promise<void>
   applyServerEvent: (ev: ServerEvent) => void
 }
 
@@ -36,6 +39,7 @@ function descendantIds(nodes: Record<string, KNode>, rootId: string): string[] {
 
 export const useEntityStore = create<EntityState>((set, get) => ({
   nodes: {},
+  edges: {},
   workspaceId: null,
   loaded: false,
   loadError: null,
@@ -43,10 +47,15 @@ export const useEntityStore = create<EntityState>((set, get) => ({
   load: async () => {
     try {
       const ws = await api.workspace()
-      const list = await api.listNodes(ws.workspaceId)
+      const [list, edgeList] = await Promise.all([
+        api.listNodes(ws.workspaceId),
+        api.listEdges(ws.workspaceId),
+      ])
       const nodes: Record<string, KNode> = {}
       for (const n of list) nodes[n.id] = n
-      set({ nodes, workspaceId: ws.workspaceId, loaded: true, loadError: null })
+      const edges: Record<string, KEdge> = {}
+      for (const e of edgeList) edges[e.id] = e
+      set({ nodes, edges, workspaceId: ws.workspaceId, loaded: true, loadError: null })
     } catch (e) {
       set({ loadError: e instanceof Error ? e.message : String(e), loaded: false })
     }
@@ -119,7 +128,64 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     }
   },
 
+  createEdge: async ({ boardId, sourceNodeId, targetNodeId, label = '' }) => {
+    const workspaceId = get().workspaceId
+    if (!workspaceId) throw new Error('workspace not loaded')
+    const now = new Date().toISOString()
+    const edge: KEdge = {
+      id: crypto.randomUUID(),
+      workspaceId,
+      boardId,
+      sourceNodeId,
+      targetNodeId,
+      label,
+      createdAt: now,
+      updatedAt: now,
+    }
+    set((s) => ({ edges: { ...s.edges, [edge.id]: edge } }))
+    try {
+      const saved = await api.upsertEdge(edge)
+      set((s) => ({ edges: { ...s.edges, [saved.id]: saved } }))
+    } catch (e) {
+      set((s) => {
+        const next = { ...s.edges }
+        delete next[edge.id]
+        return { edges: next }
+      })
+      throw e
+    }
+  },
+
+  removeEdge: async (id) => {
+    const snapshot = get().edges
+    if (!snapshot[id]) return
+    set((s) => {
+      const next = { ...s.edges }
+      delete next[id]
+      return { edges: next }
+    })
+    try {
+      await api.deleteEdge(id)
+    } catch (e) {
+      set({ edges: snapshot })
+      throw e
+    }
+  },
+
   applyServerEvent: (ev) => {
+    if (ev.type === 'edge.created' || ev.type === 'edge.updated') {
+      set((s) => ({ edges: { ...s.edges, [ev.payload.id]: ev.payload } }))
+      return
+    }
+    if (ev.type === 'edge.deleted') {
+      set((s) => {
+        if (!s.edges[ev.payload.id]) return s
+        const next = { ...s.edges }
+        delete next[ev.payload.id]
+        return { edges: next }
+      })
+      return
+    }
     if (ev.type === 'node.created' || ev.type === 'node.updated') {
       const incoming = ev.payload
       set((s) => {

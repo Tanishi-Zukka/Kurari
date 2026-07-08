@@ -1,5 +1,6 @@
 package app.kurari.node
 
+import app.kurari.edge.EdgeService
 import app.kurari.ws.EventBroadcaster
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -12,6 +13,7 @@ import java.util.UUID
 class NodeService(
     private val repo: NodeRepository,
     private val broadcaster: EventBroadcaster,
+    private val edgeService: EdgeService,
 ) {
 
     @Transactional(readOnly = true)
@@ -83,6 +85,7 @@ class NodeService(
 
     private fun deleteRecursive(entity: NodeEntity) {
         repo.findByParentIdAndDeletedAtIsNull(entity.id).forEach { deleteRecursive(it) }
+        edgeService.deleteByEndpoint(entity.id) // 接続していたエッジも道連れ
         entity.deletedAt = Instant.now()
         entity.updatedAt = entity.deletedAt!!
         repo.save(entity)
