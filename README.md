@@ -3,7 +3,8 @@
 ホワイトボード、ドキュメント、チャット、AI出力を1つの画面に統合した、AI対応チームコンテキスト管理ワークスペース。
 
 ボード・ドキュメント・チャット・AI出力を、すべて同一のエンティティツリー上のノードとして統一管理します。
-設計・実装計画の全体は [docs/PLAN.md](docs/PLAN.md) を参照してください。
+
+Kurari is not affiliated with Figma, FigJam, Notion, GitHub, OpenAI, or their related companies.
 
 ## 構成
 
@@ -12,7 +13,6 @@
 | `frontend/` | Vite + React + TypeScript + Tailwind v4 + Zustand + React Flow |
 | `backend/`  | Spring Boot 3.5 + Kotlin + PostgreSQL (JPA / Flyway) |
 | `agent/`    | Kurari Agent — ローカルAI CLIを実行するAIジョブワーカー (Node.js + TS) |
-| `docs/`     | 設計ドキュメント |
 
 ## 起動方法（ローカル開発）
 
@@ -72,3 +72,9 @@ Doc モードは BlockNote ベースのブロックエディタです（`# ` や
 - **見出し(h1-h3)は block ノードとして左の構造ツリーに同期**され、
   ツリーの見出しクリックで該当ドキュメントの該当位置へジャンプできます
 - ドキュメント選択中は Context Panel のコメントがそのドキュメントに紐づきます
+
+## License
+
+Kurari is released under the MIT License. See [LICENSE](LICENSE).
+
+Third-party dependency notices are summarized in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

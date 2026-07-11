@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Kurari — ボード(FigJam風)・ドキュメント・チャット・AI出力を単一のエンティティツリーで統合するワークスペース。
-セットアップ手順・構成の全体像は [README.md](README.md)、設計は [docs/PLAN.md](docs/PLAN.md) を参照。
+セットアップ手順・構成の全体像は [README.md](README.md) を参照。
 
 ## 構成
 

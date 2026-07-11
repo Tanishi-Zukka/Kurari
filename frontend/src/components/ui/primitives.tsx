@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes } from 'react'
 
-/** shadcn/ui 風の最小プリミティブ。CLIが環境と噛み合わなかったため自前実装。 */
+/** アプリ内で使う最小限のUIプリミティブ。 */
 
 type ButtonVariant = 'default' | 'outline' | 'ghost' | 'primary'
 

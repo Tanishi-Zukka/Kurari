@@ -2,6 +2,7 @@
   "name": "kurari-agent",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Kurari Agent — ローカルで Copilot CLI を実行するAIジョブワーカー",
   "bin": {
