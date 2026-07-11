@@ -14,7 +14,8 @@ import java.util.UUID
 @Suppress("EnumEntryName")
 enum class NodeType {
     workspace, project, board, sticky, text_card, shape, group, document, block,
-    chat_room, message, comment, ai_summary, decision, open_question, task, link
+    chat_room, message, comment, ai_summary, decision, open_question, task, link,
+    drawing, image
 }
 
 @Entity

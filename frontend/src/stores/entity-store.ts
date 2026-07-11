@@ -19,8 +19,19 @@ interface EntityState {
   }) => Promise<KNode>
   updateNode: (id: string, patch: { name?: string; orderKey?: string; data?: Record<string, unknown> }) => Promise<void>
   removeNode: (id: string) => Promise<void>
-  createEdge: (input: { boardId: string; sourceNodeId: string; targetNodeId: string; label?: string }) => Promise<void>
+  /** undo による削除の取り消し。id を含む完全な KNode を渡して復元する */
+  restoreNode: (node: KNode) => Promise<void>
+  createEdge: (input: {
+    boardId: string
+    sourceNodeId: string
+    targetNodeId: string
+    label?: string
+    data?: Record<string, unknown>
+  }) => Promise<KEdge>
+  updateEdge: (id: string, patch: { label?: string; data?: Record<string, unknown> }) => Promise<void>
   removeEdge: (id: string) => Promise<void>
+  /** undo による削除の取り消し。id を含む完全な KEdge を渡して復元する */
+  restoreEdge: (edge: KEdge) => Promise<void>
   applyServerEvent: (ev: ServerEvent) => void
 }
 
@@ -128,7 +139,22 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     }
   },
 
-  createEdge: async ({ boardId, sourceNodeId, targetNodeId, label = '' }) => {
+  restoreNode: async (node) => {
+    set((s) => ({ nodes: { ...s.nodes, [node.id]: node } }))
+    try {
+      const saved = await api.upsertNode(node)
+      set((s) => ({ nodes: { ...s.nodes, [saved.id]: saved } }))
+    } catch (e) {
+      set((s) => {
+        const next = { ...s.nodes }
+        delete next[node.id]
+        return { nodes: next }
+      })
+      throw e
+    }
+  },
+
+  createEdge: async ({ boardId, sourceNodeId, targetNodeId, label = '', data = {} }) => {
     const workspaceId = get().workspaceId
     if (!workspaceId) throw new Error('workspace not loaded')
     const now = new Date().toISOString()
@@ -139,6 +165,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       sourceNodeId,
       targetNodeId,
       label,
+      data,
       createdAt: now,
       updatedAt: now,
     }
@@ -146,12 +173,32 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const saved = await api.upsertEdge(edge)
       set((s) => ({ edges: { ...s.edges, [saved.id]: saved } }))
+      return saved
     } catch (e) {
       set((s) => {
         const next = { ...s.edges }
         delete next[edge.id]
         return { edges: next }
       })
+      throw e
+    }
+  },
+
+  updateEdge: async (id, patch) => {
+    const prev = get().edges[id]
+    if (!prev) return
+    const optimistic: KEdge = {
+      ...prev,
+      label: patch.label ?? prev.label,
+      data: patch.data ? { ...prev.data, ...patch.data } : prev.data,
+      updatedAt: new Date().toISOString(),
+    }
+    set((s) => ({ edges: { ...s.edges, [id]: optimistic } }))
+    try {
+      const saved = await api.upsertEdge(optimistic)
+      set((s) => ({ edges: { ...s.edges, [saved.id]: saved } }))
+    } catch (e) {
+      set((s) => ({ edges: { ...s.edges, [id]: prev } }))
       throw e
     }
   },
@@ -168,6 +215,21 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       await api.deleteEdge(id)
     } catch (e) {
       set({ edges: snapshot })
+      throw e
+    }
+  },
+
+  restoreEdge: async (edge) => {
+    set((s) => ({ edges: { ...s.edges, [edge.id]: edge } }))
+    try {
+      const saved = await api.upsertEdge(edge)
+      set((s) => ({ edges: { ...s.edges, [saved.id]: saved } }))
+    } catch (e) {
+      set((s) => {
+        const next = { ...s.edges }
+        delete next[edge.id]
+        return { edges: next }
+      })
       throw e
     }
   },

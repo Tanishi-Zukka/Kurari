@@ -8,6 +8,9 @@ dist/
 build/
 *.class
 
+# Uploads / embedded DB data
+data/
+
 # IDE
 .idea/
 .vscode/
@@ -23,3 +26,18 @@ build/
 
 # Logs
 *.log
+
+# E2E artifacts
+frontend/e2e/*.png
+frontend/e2e/*.jpg
+frontend/e2e/*.jpeg
+frontend/e2e/*.webp
+frontend/e2e/*.gif
+frontend/e2e/*.mp4
+frontend/e2e/*.webm
+frontend/e2e/*.zip
+frontend/e2e/test-results/
+frontend/e2e/playwright-report/
+
+# temp
+temp/

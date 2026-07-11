@@ -5,6 +5,8 @@ export type NodeType =
   | 'sticky'
   | 'text_card'
   | 'shape'
+  | 'drawing'
+  | 'image'
   | 'group'
   | 'document'
   | 'block'
@@ -29,7 +31,7 @@ export interface KNode {
   updatedAt: string
 }
 
-export type StickyColor = 'yellow' | 'blue' | 'pink' | 'green'
+export type StickyColor = 'yellow' | 'blue' | 'pink' | 'green' | 'gray'
 export type ShapeKind = 'rect' | 'ellipse'
 
 export interface StickyData {
@@ -53,12 +55,55 @@ export interface KEdge {
   sourceNodeId: string
   targetNodeId: string
   label: string
+  data: EdgeData
   createdAt: string
   updatedAt: string
 }
 
+export type EdgeShape = 'straight' | 'elbow' | 'curved'
+export type EdgeSide = 't' | 'r' | 'b' | 'l'
+
+/** ノード外周上の接続位置。side の辺上を 0..1 の割合 t で表す */
+export interface EdgeAnchor {
+  side: EdgeSide
+  t: number
+}
+
+/**
+ * 矢印の描画属性。
+ * - bend: 中点からのオフセット（curved の曲げ量 / elbow の中間セグメント位置）
+ * - anchor が null/未定義のエッジは相手方向の最寄り辺に自動接続（レガシー互換）
+ */
+export interface EdgeData {
+  bend?: { x: number; y: number } | null
+  shape?: EdgeShape
+  color?: StickyColor
+  strokeWidth?: number
+  sourceAnchor?: EdgeAnchor | null
+  targetAnchor?: EdgeAnchor | null
+  [key: string]: unknown
+}
+
 /** ボードにキャンバス要素として描画されるノード種別 */
-export const BOARD_ITEM_TYPES: NodeType[] = ['sticky', 'text_card', 'shape']
+export const BOARD_ITEM_TYPES: NodeType[] = ['sticky', 'text_card', 'shape', 'drawing', 'image']
+
+export interface DrawingData {
+  points: { x: number; y: number }[]
+  color: StickyColor
+  strokeWidth: number
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface ImageData {
+  url: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
 
 export interface CommentData {
   text: string
@@ -82,6 +127,30 @@ export function stickyData(node: KNode): BoardItemData {
     y: d.y ?? 0,
     w: d.w ?? 220,
     h: d.h ?? 120,
+  }
+}
+
+export function drawingData(node: KNode): DrawingData {
+  const d = node.data as Partial<DrawingData>
+  return {
+    points: d.points ?? [],
+    color: d.color ?? 'gray',
+    strokeWidth: d.strokeWidth ?? 2,
+    x: d.x ?? 0,
+    y: d.y ?? 0,
+    w: d.w ?? 200,
+    h: d.h ?? 200,
+  }
+}
+
+export function imageData(node: KNode): ImageData {
+  const d = node.data as Partial<ImageData>
+  return {
+    url: d.url ?? '',
+    x: d.x ?? 0,
+    y: d.y ?? 0,
+    w: d.w ?? 320,
+    h: d.h ?? 220,
   }
 }
 

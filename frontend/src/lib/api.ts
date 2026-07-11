@@ -47,4 +47,22 @@ export const api = {
   createAiJob: (body: { type: string; boardId: string; prompt?: string }) =>
     request<AiJob>('/api/ai/jobs', { method: 'POST', body: JSON.stringify(body) }),
   getAiJob: (id: string) => request<AiJob>(`/api/ai/jobs/${id}`),
+
+  /** multipart/form-data のため JSON 用の request() ヘルパーは使わない（Content-Typeを固定しないこと） */
+  uploadFile: async (file: File): Promise<{ url: string }> => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch('/api/files', { method: 'POST', body: form })
+    if (!res.ok) {
+      let message = `${res.status} ${res.statusText}`
+      try {
+        const body = await res.json()
+        if (body?.error?.message) message = body.error.message
+      } catch {
+        // keep default message
+      }
+      throw new Error(message)
+    }
+    return (await res.json()) as { url: string }
+  },
 }

@@ -17,6 +17,8 @@ interface UiState {
   panRequestId: string | null
   /** ツリーの見出しクリックでエディタ内ブロックへのスクロールを要求（BlockNoteのblock id） */
   docScrollBlockId: string | null
+  /** 接続ハンドルを常時表示するか（トグル可能。既定は選択/ホバー時のみ表示） */
+  showHandles: boolean
 
   setActiveBoard: (id: string | null) => void
   setActiveDoc: (id: string | null) => void
@@ -29,6 +31,7 @@ interface UiState {
   clearPanRequest: () => void
   requestDocScroll: (blockId: string) => void
   clearDocScroll: () => void
+  toggleShowHandles: () => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -42,6 +45,7 @@ export const useUiStore = create<UiState>((set) => ({
   aiStatus: null,
   panRequestId: null,
   docScrollBlockId: null,
+  showHandles: false,
 
   setActiveBoard: (id) => set({ activeBoardId: id }),
   setActiveDoc: (id) => set({ activeDocId: id }),
@@ -55,4 +59,5 @@ export const useUiStore = create<UiState>((set) => ({
   setWsState: (wsState) => set({ wsState }),
   setAiStatus: (aiStatus) => set({ aiStatus }),
   clearPanRequest: () => set({ panRequestId: null }),
+  toggleShowHandles: () => set((s) => ({ showHandles: !s.showHandles })),
 }))

@@ -1,0 +1,69 @@
+# CLAUDE.md
+
+Kurari — ボード(FigJam風)・ドキュメント・チャット・AI出力を単一のエンティティツリーで統合するワークスペース。
+セットアップ手順・構成の全体像は [README.md](README.md)、設計は [docs/PLAN.md](docs/PLAN.md) を参照。
+
+## 構成
+
+- `frontend/` — Vite + React + TS + Tailwind v4 + Zustand + React Flow (@xyflow/react v12)
+- `backend/` — Spring Boot 3.5 + Kotlin + PostgreSQL (JPA + Flyway、`ddl-auto: validate`)
+- `agent/` — AIジョブワーカー（ローカルAI CLI `copilot` を実行。バックエンドはLLMを実行しない）
+
+## 起動・検証コマンド
+
+```bash
+# backend (:8080) — Docker PG がある場合は docker compose up -d を先に
+cd backend && ./gradlew bootRun
+# Docker なし: embedded PG（backend/data/pg に永続化。Docker側とはデータ別物）
+cd backend && ./gradlew bootRun --args='--spring.profiles.active=embedded'
+
+# frontend (:5173)
+cd frontend && npm run dev
+
+# 検証
+cd frontend && npx tsc -b          # 型チェック（lint は oxlint）
+cd backend && ./gradlew compileKotlin
+cd frontend && node e2e/smoke.mjs  # E2Eスモーク。両サーバ起動が前提、AI要約待ちで約3分
+```
+
+- スキーマ変更は Flyway マイグレーション必須（`backend/src/main/resources/db/migration/V*.sql`）。
+  適用にはバックエンド再起動が必要（gradle daemon が温まっていれば数秒で起動する）。
+- E2Eスモークは冒頭でシードワークスペースの残骸（`スモーク*`・`(empty sticky)` 等と全エッジ）を
+  API 経由で掃除してから走る。要素はビューポート中央に作られて積み重なるため、
+  掃除なしで繰り返すとクリック横取りでフレークする。
+
+## データモデル（重要）
+
+- ほぼ全エンティティが `nodes` テーブル1本の **KNode ツリー**（workspace/board/sticky/document/…）。
+  種別ごとの属性は `data` JSONB に持つ（例: ボード要素は `x,y,w,h`、色、テキスト）。
+- ボードの矢印だけは `edges` テーブル（KEdge）。描画属性（線種 shape・色・太さ・
+  接続アンカー sourceAnchor/targetAnchor・曲げ bend）は `edges.data` JSONB。
+- 開発シードのワークスペース ID は `00000000-0000-0000-0000-000000000001`、
+  First Board は `...0003`。E2E やデバッグスクリプトはこれを直接叩く。
+- 変更は REST（`/api/nodes`, `/api/edges`）＋ WebSocket ブロードキャストで全クライアント同期。
+
+## React Flow の運用ルール（controlled）
+
+`BoardMode.tsx` は nodes/edges を完全 controlled で渡す。ハマりどころ:
+
+- **flowNodes には `measured: {width, height}` を必ず渡す**。渡さないと React Flow の
+  `nodesInitialized` が永遠に false になり、パン（ツリークリックでのジャンプ）等が黙って死ぬ。
+  寸法は store の `w/h` で自前管理しているのでそのまま渡してよい。
+- `onNodesChange` はユーザー操作由来の position（ドラッグ中）/ dimensions（リサイズ中）/
+  select だけを store に反映する。全変更を書き戻すと store↔ReactFlow の無限ループになる。
+- 永続化はドラッグ/リサイズ終了時（`onNodeDragStop` / `onResizeEnd`）に行い、
+  undo/redo を `history-store` に push する。ボード操作を追加したら必ず undo 対応を入れる。
+- エッジの選択状態は React Flow が持たないため `BoardMode` のローカル state で管理
+  （`onEdgesChange` の select 変更を拾う）。
+- `EdgeLabelRenderer` の中身はノードレイヤーより下に描画される。クリック可能な UI
+  （エッジのツールバーやハンドル）には `zIndex: 1100` と `pointerEvents: 'all'` を付ける。
+
+## その他の約束事
+
+- コミットに `Co-Authored-By: Claude` を入れない（ユーザー指示）。
+- **モデルの使い分け**: Sonnet で十分なタスク（機械的な一括修正、定型的な調査・検索、
+  単純なスクリプト作成など）は subagent に `model: sonnet` を指定して委譲する。
+  設計判断・複雑なデバッグ・レビューなど判断力が要る作業はメインモデルで行う。
+- UI 文言・コメントは日本語。
+- Playwright はグローバルに無いので、検証スクリプトは `frontend/` 配下から実行する
+  （`node e2e/xxx.mjs`）。使い捨てスクリプトは `e2e/_*.mjs` に置き、終わったら消す。

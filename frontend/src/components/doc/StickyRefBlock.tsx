@@ -14,6 +14,7 @@ const COLOR_CLASSES: Record<StickyColor, string> = {
   blue: 'bg-sky-50 border-sky-300',
   pink: 'bg-pink-50 border-pink-300',
   green: 'bg-emerald-50 border-emerald-300',
+  gray: 'bg-neutral-100 border-neutral-300',
 }
 
 /** 参照先が未選択のときに表示するインライン付箋ピッカー */

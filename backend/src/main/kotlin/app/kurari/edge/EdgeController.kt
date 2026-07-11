@@ -20,6 +20,7 @@ data class UpsertEdgeRequest(
     @field:NotNull val sourceNodeId: UUID,
     @field:NotNull val targetNodeId: UUID,
     val label: String = "",
+    val data: Map<String, Any?> = emptyMap(),
 )
 
 @RestController
@@ -35,7 +36,8 @@ class EdgeController(private val service: EdgeService) {
             EdgeDto(
                 id = req.id, workspaceId = req.workspaceId, boardId = req.boardId,
                 sourceNodeId = req.sourceNodeId, targetNodeId = req.targetNodeId,
-                label = req.label, createdAt = java.time.Instant.now(), updatedAt = java.time.Instant.now(),
+                label = req.label, data = req.data,
+                createdAt = java.time.Instant.now(), updatedAt = java.time.Instant.now(),
             ),
         )
 

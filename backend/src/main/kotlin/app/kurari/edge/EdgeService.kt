@@ -15,13 +15,14 @@ data class EdgeDto(
     val sourceNodeId: UUID,
     val targetNodeId: UUID,
     val label: String,
+    val data: Map<String, Any?>,
     val createdAt: Instant,
     val updatedAt: Instant,
 ) {
     companion object {
         fun from(e: EdgeEntity) = EdgeDto(
             e.id, e.workspaceId, e.boardId, e.sourceNodeId, e.targetNodeId,
-            e.label, e.createdAt, e.updatedAt,
+            e.label, e.data, e.createdAt, e.updatedAt,
         )
     }
 }
@@ -41,6 +42,7 @@ class EdgeService(
         val existing = repo.findById(dto.id).orElse(null)
         val entity = existing?.apply {
             label = dto.label
+            data = dto.data.toMutableMap()
             deletedAt = null
             updatedAt = Instant.now()
         } ?: EdgeEntity(
@@ -50,6 +52,7 @@ class EdgeService(
             sourceNodeId = dto.sourceNodeId,
             targetNodeId = dto.targetNodeId,
             label = dto.label,
+            data = dto.data.toMutableMap(),
         )
         val saved = EdgeDto.from(repo.save(entity))
         broadcaster.broadcast(if (existing != null) "edge.updated" else "edge.created", saved)

@@ -5,6 +5,21 @@ let failed = 0
 const ok = (name) => console.log(`  ✅ ${name}`)
 const ng = (name, e) => { failed++; console.log(`  ❌ ${name}: ${e}`) }
 
+// 前回実行の残骸を掃除する。スモークが作る要素はビューポート中央＝シード付箋の
+// 真上に積み重なっていき、次回実行時のホバー/クリックを横取りしてしまうため。
+const WS = '00000000-0000-0000-0000-000000000001'
+{
+  const junkNames = ['スモークテキスト', '(empty sticky)', '(image)', '新しいボード']
+  const nodes = await (await fetch(`http://localhost:8080/api/nodes?workspaceId=${WS}`)).json()
+  for (const n of nodes) {
+    if (junkNames.includes(n.name) || n.name.startsWith('スモーク')) {
+      await fetch(`http://localhost:8080/api/nodes/${n.id}`, { method: 'DELETE' })
+    }
+  }
+  const edges = await (await fetch(`http://localhost:8080/api/edges?workspaceId=${WS}`)).json()
+  for (const e of edges) await fetch(`http://localhost:8080/api/edges/${e.id}`, { method: 'DELETE' })
+}
+
 const browser = await chromium.launch()
 const page = await browser.newPage()
 page.setDefaultTimeout(15000)
@@ -20,7 +35,7 @@ try {
   // 2. ツールバーから付箋作成 → ツリーに出現
   const treeRows = () => page.locator('[data-tree-id]').count()
   const before = await treeRows()
-  await page.getByRole('button', { name: /付箋/ }).click()
+  await page.getByTitle('付箋を追加').click()
   await page.waitForFunction(
     (n) => document.querySelectorAll('[data-tree-id]').length > n,
     before,
@@ -98,7 +113,7 @@ try {
   // 13. リロード → 本文・見出しツリーが残る（永続化）
   await page.reload()
   await page.getByRole('link', { name: /Doc/ }).click()
-  await page.getByRole('button', { name: 'スモーク設計メモ' }).click()
+  await page.getByRole('button', { name: 'スモーク設計メモ' }).first().click()
   await page.getByText('本文のテキストです').first().waitFor()
   await page.locator('[data-tree-id]', { hasText: '決定事項' }).first().waitFor()
   ok('ドキュメント本文と見出しツリーがリロード後も残る')
@@ -141,24 +156,16 @@ try {
   await page.getByText('保存済み', { exact: true }).waitFor({ timeout: 10000 }) // 自動保存の完了を待つ
   await page.reload()
   await page.getByRole('link', { name: /Doc/ }).click()
-  await page.getByRole('button', { name: 'スモーク設計メモ' }).click()
+  await page.getByRole('button', { name: 'スモーク設計メモ' }).first().click()
   const refBlock = page.locator('.bn-editor').getByText('付箋の参照', { exact: false }).first()
   await refBlock.waitFor()
   await refBlock.click()
   await page.locator('.react-flow__node', { hasText: 'Kurariへようこそ' }).first().waitFor()
   ok('参照ブロックの永続化とクリックでボードへジャンプ')
-  // 18. テキストカードと図形（楕円）の作成 → ツリー反映
+  // 18. エッジ接続: 付箋の縁のハンドルからドラッグして別要素に接続
+  // （テスト17のパンで付箋が画面中央にいるうちに行う。後続のテキストカード等は
+  //   画面中央=付箋の真上に作られるため、先に接続しないとホバーが遮られる）
   await page.getByRole('link', { name: /Board/ }).click()
-  await page.getByRole('button', { name: /テキスト/ }).click()
-  await page.locator('.react-flow__node.selected').first().dblclick()
-  await page.keyboard.type('スモークテキスト')
-  await page.locator('.react-flow__pane').click({ position: { x: 40, y: 40 } })
-  await page.locator('[data-tree-id]', { hasText: 'スモークテキスト' }).first().waitFor()
-  await page.getByRole('button', { name: '楕円を追加' }).click()
-  await page.waitForTimeout(300)
-  ok('テキストカード・図形の作成 → ツリー同期')
-
-  // 19. エッジ接続: 付箋の縁のハンドルからドラッグして別要素に接続
   const nodeA = page.locator('.react-flow__node', { hasText: 'Kurariへようこそ' }).first()
   const nodeB = page.locator('.react-flow__node', { hasText: '付箋を選択すると' }).first()
   await nodeA.hover()
@@ -173,6 +180,16 @@ try {
   await page.locator('.react-flow__edge').first().waitFor({ timeout: 5000 })
   ok('要素間のドラッグ接続（矢印エッジ）')
 
+  // 19. テキストカードと図形（楕円）の作成 → ツリー反映
+  await page.getByTitle('テキストカードを追加').click()
+  await page.locator('.react-flow__node.selected').first().dblclick()
+  await page.keyboard.type('スモークテキスト')
+  await page.locator('.react-flow__pane').click({ position: { x: 40, y: 40 } })
+  await page.locator('[data-tree-id]', { hasText: 'スモークテキスト' }).first().waitFor()
+  await page.getByTitle('楕円を追加').click()
+  await page.waitForTimeout(300)
+  ok('テキストカード・図形の作成 → ツリー同期')
+
   // 20. エッジの永続化（リロード後も残る）
   await page.reload()
   await page.locator('.react-flow__edge').first().waitFor({ timeout: 10000 })
@@ -182,8 +199,16 @@ try {
   const findEllipse = (list) => list.find((n) => n.type === 'shape' && n.data.kind === 'ellipse')
   const nodesBefore = await (await fetch('http://localhost:8080/api/nodes?workspaceId=00000000-0000-0000-0000-000000000001')).json()
   const shapeBefore = findEllipse(nodesBefore)
-  const target = page.locator('.react-flow__node', { hasText: 'ラベル' }).first()
-  await target.click()
+  // 中央に要素が積み重なるとクリックが横取りされるため、APIで空き座標へ移動し
+  // ツリー行クリックのパン（該当ノードを画面中央へ）で確実に単独表示にする
+  await fetch(`http://localhost:8080/api/nodes/${shapeBefore.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: { x: -600, y: 800 } }),
+  })
+  await page.waitForTimeout(600) // WS経由で新座標がストアに反映されるのを待つ
+  await page.locator(`[data-tree-id="${shapeBefore.id}"]`).click()
+  await page.waitForTimeout(800) // パンアニメーション待ち
   const handle = page.locator('.react-flow__resize-control.bottom.right').first()
   const hb = await handle.boundingBox()
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
@@ -192,7 +217,7 @@ try {
   await page.mouse.up()
   await page.waitForTimeout(800)
   const nodesAfter = await (await fetch('http://localhost:8080/api/nodes?workspaceId=00000000-0000-0000-0000-000000000001')).json()
-  const shapeAfter = findEllipse(nodesAfter)
+  const shapeAfter = nodesAfter.find((n) => n.id === shapeBefore.id)
   if (shapeAfter.data.w > shapeBefore.data.w) ok('リサイズがAPIに永続化')
   else ng('リサイズ', `w: ${shapeBefore.data.w} -> ${shapeAfter.data.w}`)
 
