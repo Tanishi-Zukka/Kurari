@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Kurari — チームの思考とAIを、ひとつのワークスペースに。" />
+    <meta name="theme-color" content="#f7f4ed" />
+    <title>Kurari — 思考がつながるワークスペース</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Kurari トップへ">
+        <span class="brand-mark" aria-hidden="true">K</span>
+        <span>Kurari</span>
+      </a>
+      <nav aria-label="メインナビゲーション">
+        <a href="#features">できること</a>
+        <a href="#workflow">使い方</a>
+        <a class="nav-cta" href="https://github.com/Tanishi-Zukka/Kurari">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span> Open source workspace</p>
+          <h1>思考をひらく。<br /><em>つながり</em>が見える。</h1>
+          <p class="hero-lead">
+            ボード、ドキュメント、チャット、AIの出力を、ひとつのツリーで整理する。
+            Kurariは、チームの文脈を途切れさせないワークスペースです。
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://github.com/Tanishi-Zukka/Kurari#%E8%B5%B7%E5%8B%95%E6%96%B9%E6%B3%95%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E9%96%8B%E7%99%BA">ローカルで試す <span>→</span></a>
+            <a class="button secondary" href="#features">詳しく見る</a>
+          </div>
+          <p class="hero-note">MIT License · あなたのデータは、あなたの環境に</p>
+        </div>
+
+        <div class="workspace-preview" aria-label="Kurariの画面イメージ">
+          <div class="window-bar">
+            <div class="window-dots"><i></i><i></i><i></i></div>
+            <span>Product discovery / First Board</span>
+            <b>Share</b>
+          </div>
+          <div class="app-shell">
+            <aside class="tree">
+              <strong><span class="mini-logo">K</span> Kurari</strong>
+              <small>WORKSPACE</small>
+              <ul>
+                <li class="active">⌗&nbsp; First Board</li>
+                <li>▤&nbsp; Product brief</li>
+                <li class="nested">§&nbsp; Problem</li>
+                <li class="nested">§&nbsp; Insights</li>
+                <li>✦&nbsp; AI summary</li>
+              </ul>
+              <div class="members"><span>AM</span><span>SK</span><span>＋</span></div>
+            </aside>
+            <div class="canvas">
+              <div class="canvas-tools">↖ &nbsp; T &nbsp; □ &nbsp; ◇ &nbsp; ↗</div>
+              <div class="canvas-title"><small>DISCOVERY</small><br />アイデアを、次の一歩へ</div>
+              <div class="sticky yellow">ユーザーの声を<br /><b>ひとつの場所に</b><span>AM</span></div>
+              <div class="sticky coral">会話の背景も<br />一緒に残したい<span>SK</span></div>
+              <div class="sticky mint">AIで要点を整理して<br />判断を速くする<span>AI</span></div>
+              <svg class="connections" viewBox="0 0 700 430" preserveAspectRatio="none" aria-hidden="true">
+                <path d="M235 218 C290 218 286 160 350 160" />
+                <path d="M455 200 C455 270 510 280 540 300" />
+              </svg>
+              <div class="cursor cursor-one">AM</div>
+              <div class="cursor cursor-two">SK</div>
+              <div class="zoom">− &nbsp; 84% &nbsp; ＋</div>
+            </div>
+            <aside class="context">
+              <small>CONTEXT</small>
+              <h3>AI summary</h3>
+              <p>チームの議論から、重要な論点と次のアクションを抽出しました。</p>
+              <div class="summary-item"><b>01</b><span>ユーザーインサイトを集約</span></div>
+              <div class="summary-item"><b>02</b><span>優先度をチームで共有</span></div>
+              <div class="summary-item"><b>03</b><span>検証タスクを作成</span></div>
+              <button>ボードに追加</button>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="statement">
+        <p>アイデアは、ツールの境界で途切れない。</p>
+        <h2>話す。描く。書く。まとめる。<br />すべての文脈を、同じ場所に。</h2>
+      </section>
+
+      <section class="features" id="features">
+        <div class="section-heading">
+          <p class="eyebrow"><span></span> One connected context</p>
+          <h2>考えるための道具を、<br />ひとつのワークスペースに。</h2>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card board-card">
+            <div class="feature-number">01</div>
+            <div class="feature-art mini-board"><i></i><i></i><i></i><svg viewBox="0 0 300 140"><path d="M55 88 C105 30 165 120 244 52" /></svg></div>
+            <h3>自由に広がるボード</h3>
+            <p>付箋、図形、コネクター。まだ言葉にならないアイデアも、チームで動かしながら形にできます。</p>
+          </article>
+          <article class="feature-card doc-card">
+            <div class="feature-number">02</div>
+            <div class="feature-art mini-doc"><span>Product brief</span><b></b><b></b><b></b><em>Focus on the context.</em></div>
+            <h3>構造が見えるドキュメント</h3>
+            <p>見出しはツリーへ自動で同期。長い文章も、全体像と現在地を見失わずに編集できます。</p>
+          </article>
+          <article class="feature-card ai-card">
+            <div class="feature-number">03</div>
+            <div class="feature-art mini-ai"><div>✦</div><span>チームの議論を<br /><strong>3つの論点</strong>に整理しました。</span></div>
+            <h3>文脈を知るAI</h3>
+            <p>ボード上の情報をもとに要点を整理。ローカルAI CLIと連携し、データの置き場所も選べます。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="workflow" id="workflow">
+        <div>
+          <p class="eyebrow light"><span></span> From spark to shared context</p>
+          <h2>ひらめきから、<br />チームの知識へ。</h2>
+        </div>
+        <ol>
+          <li><b>01</b><span><strong>集める</strong>付箋や会話から、素材を集める。</span></li>
+          <li><b>02</b><span><strong>つなぐ</strong>関係を描き、共通理解をつくる。</span></li>
+          <li><b>03</b><span><strong>深める</strong>ドキュメントとAIで、考えを磨く。</span></li>
+          <li><b>04</b><span><strong>残す</strong>すべてを同じツリーで、次へつなぐ。</span></li>
+        </ol>
+      </section>
+
+      <section class="final-cta">
+        <span class="orbit orbit-one"></span><span class="orbit orbit-two"></span>
+        <p>YOUR TEAM, YOUR CONTEXT.</p>
+        <h2>思考がつながる場所を、<br />自分たちの手で。</h2>
+        <a class="button primary" href="https://github.com/Tanishi-Zukka/Kurari">GitHubで見る <span>→</span></a>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand" href="#top"><span class="brand-mark">K</span><span>Kurari</span></a>
+      <p>Think together. Keep the context.</p>
+      <p>© 2026 Kurari · MIT License</p>
+    </footer>
+  </body>
+</html>

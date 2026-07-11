@@ -6,6 +6,17 @@
 
 Kurari is not affiliated with Figma, FigJam, Notion, GitHub, OpenAI, or their related companies.
 
+## 紹介サイト
+
+Kurariの紹介サイトはGitHub Pagesで公開します。
+
+- 公開URL: https://tanishi-zukka.github.io/Kurari/
+- ソース: `docs/`
+- デプロイ: `main` ブランチの `docs/` 更新時にGitHub Actionsで自動実行
+
+リポジトリの **Settings → Pages → Build and deployment → Source** は
+**GitHub Actions** を選択してください。
+
 ## 構成
 
 | ディレクトリ | 内容 |
