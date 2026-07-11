@@ -7,6 +7,7 @@ export type NodeType =
   | 'shape'
   | 'drawing'
   | 'image'
+  | 'section'
   | 'group'
   | 'document'
   | 'block'
@@ -37,6 +38,8 @@ export type ShapeKind = 'rect' | 'ellipse'
 export interface StickyData {
   text: string
   color: StickyColor
+  /** true なら塗りを半透明で描画する */
+  translucent?: boolean
   x: number
   y: number
   w: number
@@ -71,21 +74,45 @@ export interface EdgeAnchor {
 
 /**
  * 矢印の描画属性。
- * - bend: 中点からのオフセット（curved の曲げ量 / elbow の中間セグメント位置）
- * - anchor が null/未定義のエッジは相手方向の最寄り辺に自動接続（レガシー互換）
+ * - bend: curved の曲げ量（S字基準の中点からのオフセット）
+ * - elbow.coords: 折れ線の中間セグメントの交差座標列（出発軸から交互に、縦ランの列x / 横ランの行y）。
+ *   未設定なら自動ルーティング（スタブ+ノード迂回）
+ * - sourceFree/targetFree: ノードに接続しないフリー端点の絶対座標。
+ *   anchor / free がどちらも無い端点は相手方向の最寄り辺に自動接続（レガシー互換）
  */
 export interface EdgeData {
   bend?: { x: number; y: number } | null
+  elbow?: { coords?: number[] } | null
   shape?: EdgeShape
   color?: StickyColor
   strokeWidth?: number
   sourceAnchor?: EdgeAnchor | null
   targetAnchor?: EdgeAnchor | null
+  sourceFree?: { x: number; y: number } | null
+  targetFree?: { x: number; y: number } | null
   [key: string]: unknown
 }
 
-/** ボードにキャンバス要素として描画されるノード種別 */
+/** ボードにキャンバス要素として描画されるノード種別（セクションは別扱い） */
 export const BOARD_ITEM_TYPES: NodeType[] = ['sticky', 'text_card', 'shape', 'drawing', 'image']
+
+/**
+ * ボード要素の絶対座標。セクション配下の要素は data.x/y をセクション相対で持つため、
+ * セクションの入れ子を親方向にたどって原点を積算する。
+ */
+export function absoluteXY(nodes: Record<string, KNode>, node: KNode): { x: number; y: number } {
+  const d = node.data as { x?: number; y?: number }
+  let x = d.x ?? 0
+  let y = d.y ?? 0
+  let parent = node.parentId ? nodes[node.parentId] : undefined
+  while (parent?.type === 'section') {
+    const pd = parent.data as { x?: number; y?: number }
+    x += pd.x ?? 0
+    y += pd.y ?? 0
+    parent = parent.parentId ? nodes[parent.parentId] : undefined
+  }
+  return { x, y }
+}
 
 export interface DrawingData {
   points: { x: number; y: number }[]
@@ -122,6 +149,7 @@ export function stickyData(node: KNode): BoardItemData {
   return {
     text: d.text ?? '',
     color: d.color ?? 'yellow',
+    translucent: d.translucent ?? false,
     kind: d.kind,
     x: d.x ?? 0,
     y: d.y ?? 0,

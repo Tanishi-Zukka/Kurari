@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useEntityStore } from '@/stores/entity-store'
+import { boardAncestorId, useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { cn } from '@/lib/utils'
 import type { TreeItem } from './TreeView'
 import { BOARD_ITEM_TYPES, type NodeType } from '@/types/model'
 import {
   Boxes, Folder, LayoutDashboard, StickyNote, MessageSquare, Sparkles,
-  FileText, ChevronRight, ChevronDown, Trash2, Layers, Hash, Type, Square, Plus,
+  FileText, ChevronRight, ChevronDown, Trash2, Layers, Hash, Type, Square, Plus, Frame,
 } from 'lucide-react'
 
 const ICONS: Partial<Record<NodeType, typeof Boxes>> = {
@@ -17,6 +17,7 @@ const ICONS: Partial<Record<NodeType, typeof Boxes>> = {
   sticky: StickyNote,
   text_card: Type,
   shape: Square,
+  section: Frame,
   comment: MessageSquare,
   ai_summary: Sparkles,
   document: FileText,
@@ -70,9 +71,10 @@ export function TreeNodeRow({ item }: { item: TreeItem }) {
       navigate('/board')
       return
     }
-    if (isBoardItem && node.parentId) {
-      // 付箋等: 親ボードを開き、選択＋パン
-      setActiveBoard(node.parentId)
+    if ((isBoardItem || node.type === 'section') && node.parentId) {
+      // 付箋等: 所属ボード（セクション配下なら祖父）を開き、選択＋パン
+      const boardId = boardAncestorId(useEntityStore.getState().nodes, node.parentId)
+      if (boardId) setActiveBoard(boardId)
       setSelected([node.id], { pan: true })
       navigate('/board')
       return

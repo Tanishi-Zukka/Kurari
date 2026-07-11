@@ -17,7 +17,10 @@ interface EntityState {
     orderKey?: string
     data?: Record<string, unknown>
   }) => Promise<KNode>
-  updateNode: (id: string, patch: { name?: string; orderKey?: string; data?: Record<string, unknown> }) => Promise<void>
+  updateNode: (
+    id: string,
+    patch: { name?: string; parentId?: string; orderKey?: string; data?: Record<string, unknown> },
+  ) => Promise<void>
   removeNode: (id: string) => Promise<void>
   /** undo による削除の取り消し。id を含む完全な KNode を渡して復元する */
   restoreNode: (node: KNode) => Promise<void>
@@ -28,7 +31,10 @@ interface EntityState {
     label?: string
     data?: Record<string, unknown>
   }) => Promise<KEdge>
-  updateEdge: (id: string, patch: { label?: string; data?: Record<string, unknown> }) => Promise<void>
+  updateEdge: (
+    id: string,
+    patch: { label?: string; data?: Record<string, unknown>; sourceNodeId?: string; targetNodeId?: string },
+  ) => Promise<void>
   removeEdge: (id: string) => Promise<void>
   /** undo による削除の取り消し。id を含む完全な KEdge を渡して復元する */
   restoreEdge: (edge: KEdge) => Promise<void>
@@ -109,6 +115,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     const optimistic: KNode = {
       ...prev,
       name: patch.name ?? prev.name,
+      parentId: patch.parentId ?? prev.parentId,
       orderKey: patch.orderKey ?? prev.orderKey,
       data: patch.data ? { ...prev.data, ...patch.data } : prev.data,
       updatedAt: new Date().toISOString(),
@@ -190,6 +197,8 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     const optimistic: KEdge = {
       ...prev,
       label: patch.label ?? prev.label,
+      sourceNodeId: patch.sourceNodeId ?? prev.sourceNodeId,
+      targetNodeId: patch.targetNodeId ?? prev.targetNodeId,
       data: patch.data ? { ...prev.data, ...patch.data } : prev.data,
       updatedAt: new Date().toISOString(),
     }
@@ -272,4 +281,17 @@ export function childrenOf(nodes: Record<string, KNode>, parentId: string | null
   return Object.values(nodes)
     .filter((n) => n.parentId === parentId)
     .sort((a, b) => (a.orderKey || '').localeCompare(b.orderKey || '') || a.createdAt.localeCompare(b.createdAt))
+}
+
+/**
+ * 祖先をたどって所属ボードの id を返す。
+ * ボード要素の親はボードとは限らない（セクション配下がある）ため、
+ * parentId をそのまま activeBoardId に使ってはいけない。
+ */
+export function boardAncestorId(nodes: Record<string, KNode>, startId: string | null): string | null {
+  let cur = startId ? nodes[startId] : undefined
+  while (cur && cur.type !== 'board') {
+    cur = cur.parentId ? nodes[cur.parentId] : undefined
+  }
+  return cur?.id ?? null
 }

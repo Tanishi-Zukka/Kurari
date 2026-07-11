@@ -43,6 +43,9 @@ class EdgeService(
         val entity = existing?.apply {
             label = dto.label
             data = dto.data.toMutableMap()
+            // 端点の付け替え（別ノードへのスナップ）を許可する
+            sourceNodeId = dto.sourceNodeId
+            targetNodeId = dto.targetNodeId
             deletedAt = null
             updatedAt = Instant.now()
         } ?: EdgeEntity(

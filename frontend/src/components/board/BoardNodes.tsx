@@ -9,6 +9,7 @@ import type { ShapeKind, StickyColor } from '@/types/model'
 export interface BoardItemFlowData {
   text: string
   color: StickyColor
+  translucent?: boolean
   kind?: ShapeKind
   [key: string]: unknown
 }
@@ -24,6 +25,18 @@ export const STICKY_FILL: Record<StickyColor, string> = {
   gray: 'bg-neutral-300',
 }
 
+/** 付箋の半透明バリアント（Tailwind の JIT のためクラスはリテラルで持つ） */
+const STICKY_FILL_TRANSLUCENT: Record<StickyColor, string> = {
+  yellow: 'bg-amber-200/50',
+  blue: 'bg-sky-200/50',
+  pink: 'bg-pink-200/50',
+  green: 'bg-emerald-200/50',
+  gray: 'bg-neutral-300/50',
+}
+
+export const stickyFillClass = (color: StickyColor, translucent?: boolean) =>
+  (translucent ? STICKY_FILL_TRANSLUCENT : STICKY_FILL)[color] ?? STICKY_FILL.yellow
+
 /** シェイプ: 薄い塗り + はっきりした色枠。付箋と一目で区別できるようにする */
 export const SHAPE_CLASSES: Record<StickyColor, string> = {
   yellow: 'bg-amber-50 border-amber-400',
@@ -31,6 +44,49 @@ export const SHAPE_CLASSES: Record<StickyColor, string> = {
   pink: 'bg-pink-50 border-pink-400',
   green: 'bg-emerald-50 border-emerald-400',
   gray: 'bg-neutral-50 border-neutral-400',
+}
+
+const SHAPE_CLASSES_TRANSLUCENT: Record<StickyColor, string> = {
+  yellow: 'bg-amber-50/40 border-amber-400/60',
+  blue: 'bg-sky-50/40 border-sky-400/60',
+  pink: 'bg-pink-50/40 border-pink-400/60',
+  green: 'bg-emerald-50/40 border-emerald-400/60',
+  gray: 'bg-neutral-50/40 border-neutral-400/60',
+}
+
+export const shapeClass = (color: StickyColor, translucent?: boolean) =>
+  (translucent ? SHAPE_CLASSES_TRANSLUCENT : SHAPE_CLASSES)[color] ?? SHAPE_CLASSES.yellow
+
+/** セクション: 色つきの薄い塗り + 同色チップ（FigJam の Section 風） */
+export const SECTION_STYLES: Record<
+  StickyColor,
+  { frame: string; frameTranslucent: string; chip: string }
+> = {
+  yellow: {
+    frame: 'bg-amber-100/50 border-amber-300',
+    frameTranslucent: 'bg-amber-100/20 border-amber-300/50',
+    chip: 'bg-amber-200/90 text-amber-900',
+  },
+  blue: {
+    frame: 'bg-sky-100/50 border-sky-300',
+    frameTranslucent: 'bg-sky-100/20 border-sky-300/50',
+    chip: 'bg-sky-200/90 text-sky-900',
+  },
+  pink: {
+    frame: 'bg-pink-100/50 border-pink-300',
+    frameTranslucent: 'bg-pink-100/20 border-pink-300/50',
+    chip: 'bg-pink-200/90 text-pink-900',
+  },
+  green: {
+    frame: 'bg-emerald-100/50 border-emerald-300',
+    frameTranslucent: 'bg-emerald-100/20 border-emerald-300/50',
+    chip: 'bg-emerald-200/90 text-emerald-900',
+  },
+  gray: {
+    frame: 'bg-neutral-400/10 border-neutral-300',
+    frameTranslucent: 'bg-neutral-400/5 border-neutral-300/50',
+    chip: 'bg-neutral-200/90 text-neutral-600',
+  },
 }
 
 /** 描画（ペン）・エッジの線色。塗りつぶしとは違う視認性重視のトーン */
@@ -202,7 +258,7 @@ export function StickyNode({ id, data, selected }: NodeProps<BoardItemFlowNode>)
       className={cn(
         // FigJam 風: 枠線なしのベタ塗り正方形 + 紙が浮いたような影、テキストは中央
         'group/item h-full w-full rounded-[2px] p-3 shadow-[2px_4px_10px_rgba(0,0,0,0.2)] transition-shadow',
-        STICKY_FILL[data.color] ?? STICKY_FILL.yellow,
+        stickyFillClass(data.color, data.translucent),
         selected && 'ring-2 ring-neutral-800/60 shadow-[2px_6px_14px_rgba(0,0,0,0.25)]',
       )}
     >
@@ -247,7 +303,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<BoardItemFlowNode>) 
       <div
         className={cn(
           'flex h-full w-full items-center justify-center border-2 p-2 text-center',
-          SHAPE_CLASSES[data.color] ?? SHAPE_CLASSES.yellow,
+          shapeClass(data.color, data.translucent),
           ellipse ? 'rounded-full' : 'rounded-sm',
           selected && 'ring-2 ring-neutral-800/60',
         )}
@@ -259,6 +315,95 @@ export function ShapeNode({ id, data, selected }: NodeProps<BoardItemFlowNode>) 
           containerClassName="flex items-center justify-center"
           className="max-h-full w-full overflow-hidden text-center text-[13px] leading-snug text-neutral-800"
         />
+      </div>
+    </div>
+  )
+}
+
+export interface SectionFlowData {
+  title: string
+  color: StickyColor
+  translucent?: boolean
+  [key: string]: unknown
+}
+
+export type SectionFlowNode = Node<SectionFlowData>
+
+/**
+ * セクション（FigJam の Section 相当）。中の要素はツリー上もこのノードの子になり、
+ * 座標はセクション相対で保持される（React Flow の parentId 機構でまとめて動く）。
+ * 枠は他要素の背面に敷かれ、上部のタイトルはダブルクリックで編集できる。
+ */
+export function SectionNode({ id, data, selected }: NodeProps<SectionFlowNode>) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(data.title)
+  const updateNode = useEntityStore((s) => s.updateNode)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+  }, [editing])
+
+  const commit = () => {
+    setEditing(false)
+    const name = draft.trim() || 'セクション'
+    if (name !== data.title) {
+      const prevName = data.title
+      void updateNode(id, { name })
+      useHistoryStore.getState().push({
+        undo: () => updateNode(id, { name: prevName }),
+        redo: () => updateNode(id, { name }),
+      })
+    }
+  }
+
+  const styles = SECTION_STYLES[data.color] ?? SECTION_STYLES.gray
+  return (
+    <div
+      className={cn(
+        'group/item h-full w-full rounded-lg border-2',
+        data.translucent ? styles.frameTranslucent : styles.frame,
+        selected && 'ring-2 ring-neutral-400/60',
+      )}
+    >
+      <ItemResizer id={id} selected={selected} minWidth={240} minHeight={160} />
+      {/* タイトルチップ: 枠の左上の外側に浮かせる（FigJam 風） */}
+      <div
+        className="absolute -top-7 left-0 max-w-full"
+        onDoubleClick={(e) => {
+          e.stopPropagation()
+          setDraft(data.title)
+          setEditing(true)
+        }}
+      >
+        {editing ? (
+          <input
+            ref={inputRef}
+            className="nodrag rounded border border-neutral-300 bg-white px-2 py-0.5 text-[12px] font-medium text-neutral-700 outline-none"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit()
+              if (e.key === 'Escape') {
+                setDraft(data.title)
+                setEditing(false)
+              }
+            }}
+          />
+        ) : (
+          <span
+            className={cn(
+              'inline-block truncate rounded px-2 py-0.5 text-[12px] font-medium',
+              styles.chip,
+            )}
+          >
+            {data.title}
+          </span>
+        )}
       </div>
     </div>
   )

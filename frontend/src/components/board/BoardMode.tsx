@@ -5,6 +5,7 @@ import {
   Background,
   ConnectionMode,
   MarkerType,
+  SelectionMode,
   useReactFlow,
   useNodesInitialized,
   type Node as FlowNode,
@@ -18,7 +19,20 @@ import { childrenOf, useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { useHistoryStore } from '@/stores/history-store'
 import { api } from '@/lib/api'
-import { StickyNode, TextCardNode, ShapeNode, DrawingNode, ImageNode, stickyNameFrom, STROKE_COLORS } from './BoardNodes'
+import { cn } from '@/lib/utils'
+import {
+  StickyNode,
+  TextCardNode,
+  ShapeNode,
+  DrawingNode,
+  ImageNode,
+  SectionNode,
+  stickyNameFrom,
+  STROKE_COLORS,
+  STICKY_FILL,
+  SHAPE_CLASSES,
+  SECTION_STYLES,
+} from './BoardNodes'
 import { BoardEdge } from './BoardEdge'
 import { BoardToolbar, type NewItemKind, type BoardTool } from './BoardToolbar'
 import { BoardZoomControl } from './BoardZoomControl'
@@ -27,6 +41,7 @@ import {
   stickyData,
   drawingData,
   imageData,
+  absoluteXY,
   BOARD_ITEM_TYPES,
   type StickyColor,
   type NodeType,
@@ -42,6 +57,7 @@ const nodeTypes = {
   shape: ShapeNode,
   drawing: DrawingNode,
   image: ImageNode,
+  section: SectionNode,
 }
 
 const edgeTypes = {
@@ -54,12 +70,63 @@ const ITEM_DEFAULTS: Record<string, { w: number; h: number; data: Record<string,
   text_card: { w: 240, h: 60, data: {} },
   rect: { w: 180, h: 100, data: { kind: 'rect' } },
   ellipse: { w: 160, h: 110, data: { kind: 'ellipse' } },
+  section: { w: 600, h: 400, data: {} },
 }
 
 /** 画像配置時の最大辺。原寸の縦横比を保ったままこのサイズに収める */
 const IMAGE_MAX_DIMENSION = 480
 const IMAGE_FALLBACK_W = 320
 const IMAGE_FALLBACK_H = 220
+
+/** 配置モード中にカーソルへ追従する半透明プレビュー（FigJam 風） */
+function PlaceGhost({
+  kind,
+  color,
+  pos,
+  zoom,
+}: {
+  kind: NewItemKind
+  color: StickyColor
+  pos: { x: number; y: number }
+  zoom: number
+}) {
+  const def = ITEM_DEFAULTS[kind]
+  const style: React.CSSProperties = {
+    left: pos.x,
+    top: pos.y,
+    width: def.w * zoom,
+    height: def.h * zoom,
+    transform: 'translate(-50%,-50%)',
+  }
+  if (kind === 'text_card') {
+    return (
+      <div className="pointer-events-none absolute flex items-center opacity-60" style={style}>
+        <span className="whitespace-nowrap text-neutral-400" style={{ fontSize: 15 * zoom }}>
+          テキストを追加
+        </span>
+      </div>
+    )
+  }
+  if (kind === 'section') {
+    return (
+      <div
+        className="pointer-events-none absolute rounded-lg border-2 border-neutral-400 bg-neutral-400/10 opacity-60"
+        style={style}
+      />
+    )
+  }
+  return (
+    <div
+      className={cn(
+        'pointer-events-none absolute opacity-50',
+        kind === 'sticky'
+          ? cn(STICKY_FILL[color], 'rounded-[2px] shadow-md')
+          : cn(SHAPE_CLASSES[color], 'border-2', kind === 'ellipse' ? 'rounded-full' : 'rounded-sm'),
+      )}
+      style={style}
+    />
+  )
+}
 
 /** アップロード前にブラウザで原寸を読み取る。読めない形式は null */
 async function readImageSize(file: File): Promise<{ w: number; h: number } | null> {
@@ -98,13 +165,20 @@ function BoardCanvas() {
   const panRequestId = useUiStore((s) => s.panRequestId)
   const clearPanRequest = useUiStore((s) => s.clearPanRequest)
 
-  const { setCenter, screenToFlowPosition } = useReactFlow()
+  const { setCenter, screenToFlowPosition, getZoom, getInternalNode, fitView } = useReactFlow()
   const nodesInitialized = useNodesInitialized()
 
   const [activeTool, setActiveTool] = useState<BoardTool>('select')
   const [color, setColor] = useState<StickyColor>('yellow')
+  const [translucent, setTranslucent] = useState(false)
   // エッジの選択状態。controlled 運用のため自前で保持する（曲げハンドルの表示に使う）
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([])
+  // 配置モード: ツールを選んでからカーソルで配置場所を決める（FigJam 風）
+  const [placing, setPlacing] = useState<NewItemKind | null>(null)
+  const [placePos, setPlacePos] = useState<{ x: number; y: number } | null>(null)
+  // セクション作成用: 2点ドラッグ中の矩形（wrapper 基準のスクリーン座標）
+  const [drawRect, setDrawRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const drawStartFlowRef = useRef<{ x: number; y: number } | null>(null)
 
   const wrapperRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -121,53 +195,106 @@ function BoardCanvas() {
     useHistoryStore.getState().clear()
   }, [activeBoardId])
 
+  // 初期表示フィット。fitView プロパティは使わない:
+  // ジャンプ（パン要求つきマウント）のとき、fitView の遅延解決が setCenter を上書きしてしまうため、
+  // パン要求が無いときだけ自前でフィットする
+  const fitDoneRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!activeBoardId || !nodesInitialized) return
+    if (fitDoneRef.current === activeBoardId) return
+    fitDoneRef.current = activeBoardId
+    if (useUiStore.getState().panRequestId) return
+    void fitView({ padding: 0.2, maxZoom: 1 })
+  }, [activeBoardId, nodesInitialized, fitView])
+
   // ストア → React Flow ノード（controlled）
+  // measured を明示的に渡す: controlled 運用では dimensions 変更を書き戻さない限り
+  // React Flow の nodesInitialized が true にならず、パン等が永久に無効化されるため。
+  // 寸法は自前管理（w/h）なのでそのまま渡してよい。
   const flowNodes: FlowNode[] = useMemo(() => {
     if (!activeBoardId) return []
-    return childrenOf(nodes, activeBoardId)
-      .filter((n) => BOARD_ITEM_TYPES.includes(n.type))
-      .map((n) => {
-        // measured を明示的に渡す: controlled 運用では dimensions 変更を書き戻さない限り
-        // React Flow の nodesInitialized が true にならず、パン等が永久に無効化されるため。
-        // 寸法は自前管理（w/h）なのでそのまま渡してよい。
-        if (n.type === 'drawing') {
-          const d = drawingData(n)
-          return {
-            id: n.id,
-            type: n.type,
-            position: { x: d.x, y: d.y },
-            data: { points: d.points, color: d.color, strokeWidth: d.strokeWidth },
-            selected: selectedIds.includes(n.id),
-            width: d.w,
-            height: d.h,
-            measured: { width: d.w, height: d.h },
-          }
-        }
-        if (n.type === 'image') {
-          const d = imageData(n)
-          return {
-            id: n.id,
-            type: n.type,
-            position: { x: d.x, y: d.y },
-            data: { url: d.url },
-            selected: selectedIds.includes(n.id),
-            width: d.w,
-            height: d.h,
-            measured: { width: d.w, height: d.h },
-          }
-        }
-        const d = stickyData(n)
+    const itemToFlow = (n: KNode, parentSectionId?: string): FlowNode => {
+      // セクション配下は座標がセクション相対。React Flow の parentId で親子にする
+      const parent = parentSectionId ? { parentId: parentSectionId } : {}
+      if (n.type === 'drawing') {
+        const d = drawingData(n)
         return {
           id: n.id,
           type: n.type,
           position: { x: d.x, y: d.y },
-          data: { text: d.text, color: d.color, kind: d.kind },
+          data: { points: d.points, color: d.color, strokeWidth: d.strokeWidth },
           selected: selectedIds.includes(n.id),
           width: d.w,
           height: d.h,
           measured: { width: d.w, height: d.h },
+          ...parent,
         }
-      })
+      }
+      if (n.type === 'image') {
+        const d = imageData(n)
+        return {
+          id: n.id,
+          type: n.type,
+          position: { x: d.x, y: d.y },
+          data: { url: d.url },
+          selected: selectedIds.includes(n.id),
+          width: d.w,
+          height: d.h,
+          measured: { width: d.w, height: d.h },
+          ...parent,
+        }
+      }
+      const d = stickyData(n)
+      return {
+        id: n.id,
+        type: n.type,
+        position: { x: d.x, y: d.y },
+        data: { text: d.text, color: d.color, translucent: d.translucent, kind: d.kind },
+        selected: selectedIds.includes(n.id),
+        width: d.w,
+        height: d.h,
+        measured: { width: d.w, height: d.h },
+        ...parent,
+      }
+    }
+    const result: FlowNode[] = []
+    // セクションの入れ子を再帰的に展開する。React Flow は親ノードが配列上で子より先に必要。
+    // zIndex: -10000 はセクションを常に全要素の背面に置くため
+    // （選択時の +1000 を足しても負のままなので、選択中も要素の下に潜ったまま）。
+    // 子の z は max(親z+1, 自身のz) なので、セクション内の要素は通常どおり手前に描かれる。
+    const walk = (parentId: string, parentSectionId?: string) => {
+      for (const n of childrenOf(nodes, parentId)) {
+        if (n.type === 'section') {
+          const d = n.data as {
+            x?: number
+            y?: number
+            w?: number
+            h?: number
+            color?: StickyColor
+            translucent?: boolean
+          }
+          const w = d.w ?? 600
+          const h = d.h ?? 400
+          result.push({
+            id: n.id,
+            type: 'section',
+            position: { x: d.x ?? 0, y: d.y ?? 0 },
+            data: { title: n.name, color: d.color ?? 'gray', translucent: d.translucent ?? false },
+            selected: selectedIds.includes(n.id),
+            width: w,
+            height: h,
+            measured: { width: w, height: h },
+            zIndex: -10000,
+            ...(parentSectionId ? { parentId: parentSectionId } : {}),
+          })
+          walk(n.id, n.id)
+        } else if (BOARD_ITEM_TYPES.includes(n.type)) {
+          result.push(itemToFlow(n, parentSectionId))
+        }
+      }
+    }
+    walk(activeBoardId)
+    return result
   }, [nodes, activeBoardId, selectedIds])
 
   // ストア → React Flow エッジ
@@ -198,9 +325,10 @@ function BoardCanvas() {
   useEffect(() => {
     if (!panRequestId || !nodesInitialized) return
     const target = nodes[panRequestId]
-    if (target && BOARD_ITEM_TYPES.includes(target.type)) {
+    if (target && (BOARD_ITEM_TYPES.includes(target.type) || target.type === 'section')) {
       const d = stickyData(target)
-      setCenter(d.x + d.w / 2, d.y + d.h / 2, { zoom: 1.1, duration: 400 })
+      const abs = absoluteXY(nodes, target) // セクション配下は相対座標のため絶対に変換
+      setCenter(abs.x + d.w / 2, abs.y + d.h / 2, { zoom: 1.1, duration: 400 })
     }
     clearPanRequest()
   }, [panRequestId, nodesInitialized, nodes, setCenter, clearPanRequest])
@@ -248,7 +376,7 @@ function BoardCanvas() {
         })
       }
 
-      // 3) ユーザーのクリック等による選択変更
+      // 3) ユーザーのクリック・範囲選択による選択変更
       const selectChanges = changes.filter(
         (c): c is Extract<NodeChange, { type: 'select' }> => c.type === 'select',
       )
@@ -258,6 +386,19 @@ function BoardCanvas() {
         for (const c of selectChanges) {
           if (c.selected) next.add(c.id)
           else next.delete(c.id)
+        }
+        // セクションとその中身（入れ子の孫を含む）が同時に選択されたら中身を外す。
+        // 両方選択のままドラッグすると、中身が親の移動+自身の移動で二重に動いてしまうため
+        const snapshot = useEntityStore.getState().nodes
+        for (const id of [...next]) {
+          let p = snapshot[id]?.parentId
+          while (p) {
+            if (next.has(p)) {
+              next.delete(id)
+              break
+            }
+            p = snapshot[p]?.parentId
+          }
         }
         const nextIds = [...next]
         const same =
@@ -284,24 +425,114 @@ function BoardCanvas() {
     })
   }, [])
 
-  const onNodeDragStart = useCallback((_e: unknown, node: FlowNode) => {
-    dragStartRef.current[node.id] = { x: node.position.x, y: node.position.y }
+  const onNodeDragStart = useCallback((_e: unknown, node: FlowNode, draggedNodes?: FlowNode[]) => {
+    for (const n of draggedNodes?.length ? draggedNodes : [node]) {
+      dragStartRef.current[n.id] = { x: n.position.x, y: n.position.y }
+    }
   }, [])
 
-  const onNodeDragStop = useCallback(
-    (_e: unknown, node: FlowNode) => {
-      const start = dragStartRef.current[node.id]
-      delete dragStartRef.current[node.id]
-      const end = { x: node.position.x, y: node.position.y }
-      void updateNode(node.id, { data: end })
-      if (start && (start.x !== end.x || start.y !== end.y)) {
+  /**
+   * 絶対座標 p を含む最も深い（入れ子の内側の）セクションを返す。
+   * excludeId を指定すると、そのセクション自身と子孫を候補から外す
+   * （セクション自体をドラッグして別セクションへ入れるとき、自分の中に入れないため）。
+   */
+  const sectionAt = useCallback(
+    (p: { x: number; y: number }, excludeId?: string): KNode | null => {
+      if (!activeBoardId) return null
+      const snapshot = useEntityStore.getState().nodes
+      let best: { node: KNode; depth: number } | null = null
+      const walk = (parentId: string, depth: number, excluded: boolean) => {
+        for (const n of childrenOf(snapshot, parentId)) {
+          if (n.type !== 'section') continue
+          const ex = excluded || n.id === excludeId
+          const o = absoluteXY(snapshot, n)
+          const d = n.data as { w?: number; h?: number }
+          const inside = p.x >= o.x && p.x <= o.x + (d.w ?? 0) && p.y >= o.y && p.y <= o.y + (d.h ?? 0)
+          if (inside && !ex && (!best || depth > best.depth)) best = { node: n, depth }
+          walk(n.id, depth + 1, ex)
+        }
+      }
+      walk(activeBoardId, 0, false)
+      return best?.node ?? null
+    },
+    [activeBoardId],
+  )
+
+  /** ドラッグ終了時の永続化。複数選択の一括移動にも対応し、undo/redo は1操作にまとめる */
+  const persistDraggedNodes = useCallback(
+    (draggedNodes: FlowNode[]) => {
+      const snapshot = useEntityStore.getState().nodes
+      const ops: { undo: () => void; redo: () => void }[] = []
+      for (const node of draggedNodes) {
+        const start = dragStartRef.current[node.id]
+        delete dragStartRef.current[node.id]
+        const end = { x: node.position.x, y: node.position.y }
+        const kn = snapshot[node.id]
+        if (!kn) continue
+        const moved = !start || start.x !== end.x || start.y !== end.y
+
+        // ボード要素・セクションは、ドロップ位置（中心の絶対座標）でセクション所属を判定して付け替える。
+        // セクション自身の場合は、自分と子孫を候補から除外する（自分の中に入る循環を防ぐ）
+        if (activeBoardId && (BOARD_ITEM_TYPES.includes(kn.type) || kn.type === 'section')) {
+          const abs = getInternalNode(node.id)?.internals.positionAbsolute ?? end
+          const d = kn.data as { w?: number; h?: number }
+          const center = { x: abs.x + (d.w ?? 0) / 2, y: abs.y + (d.h ?? 0) / 2 }
+          const sec = sectionAt(center, kn.type === 'section' ? kn.id : undefined)
+          const newParentId = sec?.id ?? activeBoardId
+          const prevParentId = kn.parentId ?? activeBoardId
+          if (newParentId !== prevParentId) {
+            const origin = sec ? absoluteXY(snapshot, sec) : { x: 0, y: 0 }
+            const rel = { x: abs.x - origin.x, y: abs.y - origin.y }
+            void updateNode(node.id, { parentId: newParentId, data: rel })
+            ops.push({
+              undo: () => void updateNode(node.id, { parentId: prevParentId, data: start ?? end }),
+              redo: () => void updateNode(node.id, { parentId: newParentId, data: rel }),
+            })
+            continue
+          }
+        }
+
+        void updateNode(node.id, { data: end })
+        if (moved && start) {
+          ops.push({
+            undo: () => void updateNode(node.id, { data: start }),
+            redo: () => void updateNode(node.id, { data: end }),
+          })
+        }
+      }
+      if (ops.length > 0) {
         useHistoryStore.getState().push({
-          undo: () => updateNode(node.id, { data: start }),
-          redo: () => updateNode(node.id, { data: end }),
+          undo: () => {
+            for (const op of ops) op.undo()
+          },
+          redo: () => {
+            for (const op of ops) op.redo()
+          },
         })
       }
     },
-    [updateNode],
+    [updateNode, activeBoardId, sectionAt, getInternalNode],
+  )
+
+  const onNodeDragStop = useCallback(
+    (_e: unknown, node: FlowNode, draggedNodes?: FlowNode[]) => {
+      persistDraggedNodes(draggedNodes?.length ? draggedNodes : [node])
+    },
+    [persistDraggedNodes],
+  )
+
+  // 範囲選択ボックスごとドラッグしたときは onSelectionDrag* に来る
+  const onSelectionDragStart = useCallback((_e: unknown, draggedNodes: FlowNode[]) => {
+    for (const n of draggedNodes) {
+      dragStartRef.current[n.id] = { x: n.position.x, y: n.position.y }
+    }
+  }, [])
+
+  const onSelectionDragStop = useCallback(
+    (_e: unknown, draggedNodes: FlowNode[]) => {
+      persistDraggedNodes(draggedNodes)
+    },
+    [persistDraggedNodes],
   )
 
   const onConnect = useCallback(
@@ -328,20 +559,78 @@ function BoardCanvas() {
     [activeBoardId, createEdge, removeEdge, restoreEdge],
   )
 
+  /** 絶対座標の矩形でセクションを作成する（2点ドラッグ・デフォルト配置の共通処理） */
+  const createSectionAt = useCallback(
+    async (rect: { x: number; y: number; w: number; h: number }) => {
+      if (!activeBoardId) return
+      // 配置先が別セクションの中なら入れ子セクションとして作る（矩形の中心で判定）
+      const snapshot0 = useEntityStore.getState().nodes
+      const parentSec = sectionAt({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 })
+      const parentOrigin = parentSec ? absoluteXY(snapshot0, parentSec) : { x: 0, y: 0 }
+      const parentId = parentSec?.id ?? activeBoardId
+      const x = rect.x - parentOrigin.x // 親ローカル座標
+      const y = rect.y - parentOrigin.y
+      const node = await createNode({
+        parentId,
+        type: 'section',
+        name: 'セクション',
+        data: { x, y, w: rect.w, h: rect.h, color, translucent },
+      })
+      // FigJam 同様、配置した領域に既にある要素（同じ親の直下）はセクション配下に取り込む。
+      // 兄弟同士は同じ座標系なので親ローカル座標のまま比較できる
+      const snapshot = useEntityStore.getState().nodes
+      const captured: { id: string; prev: { x: number; y: number } }[] = []
+      for (const n of childrenOf(snapshot, parentId)) {
+        if (!BOARD_ITEM_TYPES.includes(n.type)) continue
+        const d = n.data as { x?: number; y?: number; w?: number; h?: number }
+        const cx = (d.x ?? 0) + (d.w ?? 0) / 2
+        const cy = (d.y ?? 0) + (d.h ?? 0) / 2
+        if (cx >= x && cx <= x + rect.w && cy >= y && cy <= y + rect.h) {
+          captured.push({ id: n.id, prev: { x: d.x ?? 0, y: d.y ?? 0 } })
+          void updateNode(n.id, { parentId: node.id, data: { x: (d.x ?? 0) - x, y: (d.y ?? 0) - y } })
+        }
+      }
+      setSelected([node.id])
+      useHistoryStore.getState().push({
+        undo: async () => {
+          // 取り込んだ要素を先に元の親へ戻してからセクションを消す（カスケード削除を避ける）
+          for (const c of captured) await updateNode(c.id, { parentId, data: c.prev })
+          await removeNode(node.id)
+        },
+        redo: async () => {
+          await restoreNode(node)
+          for (const c of captured) {
+            await updateNode(c.id, { parentId: node.id, data: { x: c.prev.x - x, y: c.prev.y - y } })
+          }
+        },
+      })
+    },
+    [activeBoardId, createNode, setSelected, removeNode, restoreNode, sectionAt, updateNode, color, translucent],
+  )
+
   const createItem = useCallback(
     async (kind: NewItemKind, pos: { x: number; y: number }, itemColor: StickyColor) => {
       if (!activeBoardId) return
       const def = ITEM_DEFAULTS[kind]
+      if (kind === 'section') {
+        await createSectionAt({ x: pos.x - def.w / 2, y: pos.y - def.h / 2, w: def.w, h: def.h })
+        return
+      }
+      // 配置位置がセクション内なら、ツリー上もそのセクション（入れ子なら最深）の子として作る
+      const snapshotI = useEntityStore.getState().nodes
+      const sec = sectionAt(pos)
+      const origin = sec ? absoluteXY(snapshotI, sec) : { x: 0, y: 0 }
       const type: NodeType = kind === 'rect' || kind === 'ellipse' ? 'shape' : kind
       const node = await createNode({
-        parentId: activeBoardId,
+        parentId: sec?.id ?? activeBoardId,
         type,
         name: stickyNameFrom(''),
         data: {
           text: '',
           color: itemColor,
-          x: pos.x - def.w / 2,
-          y: pos.y - def.h / 2,
+          translucent,
+          x: pos.x - def.w / 2 - origin.x,
+          y: pos.y - def.h / 2 - origin.y,
           w: def.w,
           h: def.h,
           ...def.data,
@@ -350,7 +639,7 @@ function BoardCanvas() {
       setSelected([node.id])
       useHistoryStore.getState().push({ undo: () => removeNode(node.id), redo: () => restoreNode(node) })
     },
-    [activeBoardId, createNode, setSelected, removeNode, restoreNode],
+    [activeBoardId, createNode, setSelected, removeNode, restoreNode, sectionAt, createSectionAt, translucent],
   )
 
   const viewportCenterFlowPos = useCallback(() => {
@@ -375,14 +664,16 @@ function BoardCanvas() {
           h = Math.max(Math.round(size.h * scale), 20)
         }
         const { url } = await api.uploadFile(file)
+        const sec = sectionAt(pos)
+        const origin = sec ? absoluteXY(useEntityStore.getState().nodes, sec) : { x: 0, y: 0 }
         const node = await createNode({
-          parentId: activeBoardId,
+          parentId: sec?.id ?? activeBoardId,
           type: 'image',
           name: '(image)',
           data: {
             url,
-            x: pos.x - w / 2,
-            y: pos.y - h / 2,
+            x: pos.x - w / 2 - origin.x,
+            y: pos.y - h / 2 - origin.y,
             w,
             h,
           },
@@ -393,7 +684,7 @@ function BoardCanvas() {
         console.error('image upload failed', e)
       }
     },
-    [activeBoardId, createNode, setSelected, removeNode, restoreNode],
+    [activeBoardId, createNode, setSelected, removeNode, restoreNode, sectionAt],
   )
 
   // クリップボード貼り付けで画像を追加
@@ -417,6 +708,11 @@ function BoardCanvas() {
   // Undo/Redo キーボードショートカット、ペンモード中は Escape で選択モードに戻す
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && placing) {
+        setPlacing(null)
+        setPlacePos(null)
+        return
+      }
       if (e.key === 'Escape' && activeTool === 'pen') {
         setActiveTool('select')
         return
@@ -436,7 +732,7 @@ function BoardCanvas() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeTool])
+  }, [activeTool, placing])
 
   const onPaneDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -449,10 +745,20 @@ function BoardCanvas() {
   const onDelete = useCallback(
     ({ nodes: delNodes, edges: delEdges }: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
       const state = useEntityStore.getState()
-      const nodeSnapshots = delNodes.map((n) => state.nodes[n.id]).filter((n): n is KNode => !!n)
+      // 子孫（セクションの中身・コメント等）もスナップショットし、undo で丸ごと復元できるようにする
+      const seen = new Set<string>()
+      const nodeSnapshots: KNode[] = []
+      const collect = (id: string) => {
+        const n = state.nodes[id]
+        if (!n || seen.has(id)) return
+        seen.add(id)
+        nodeSnapshots.push(n)
+        for (const c of childrenOf(state.nodes, id)) collect(c.id)
+      }
+      for (const n of delNodes) collect(n.id)
       const edgeSnapshots = delEdges.map((e) => state.edges[e.id]).filter((e): e is KEdge => !!e)
       if (nodeSnapshots.length === 0 && edgeSnapshots.length === 0) return
-      for (const n of nodeSnapshots) void removeNode(n.id)
+      for (const n of delNodes) void removeNode(n.id)
       for (const e of edgeSnapshots) void removeEdge(e.id)
       useHistoryStore.getState().push({
         undo: () => {
@@ -469,22 +775,36 @@ function BoardCanvas() {
   )
 
   const recolorSelected = useCallback(
-    (nextColor: StickyColor) => {
+    (nextColor: StickyColor, nextTranslucent: boolean) => {
       const snapshot = useEntityStore.getState().nodes
       const targets = selectedIds
         .map((id) => snapshot[id])
-        .filter((n): n is KNode => !!n && (n.type === 'sticky' || n.type === 'shape'))
+        .filter(
+          (n): n is KNode => !!n && (n.type === 'sticky' || n.type === 'shape' || n.type === 'section'),
+        )
       if (targets.length === 0) return
-      const prevColors = new Map(
-        targets.map((n) => [n.id, ((n.data as { color?: StickyColor }).color ?? 'yellow') as StickyColor]),
+      const prev = new Map(
+        targets.map((n) => {
+          const d = n.data as { color?: StickyColor; translucent?: boolean }
+          return [
+            n.id,
+            {
+              color: d.color ?? (n.type === 'section' ? ('gray' as StickyColor) : ('yellow' as StickyColor)),
+              translucent: d.translucent ?? false,
+            },
+          ]
+        }),
       )
-      for (const n of targets) void updateNode(n.id, { data: { color: nextColor } })
+      for (const n of targets) void updateNode(n.id, { data: { color: nextColor, translucent: nextTranslucent } })
       useHistoryStore.getState().push({
         undo: () => {
-          for (const n of targets) void updateNode(n.id, { data: { color: prevColors.get(n.id) ?? 'yellow' } })
+          for (const n of targets) {
+            const p = prev.get(n.id)
+            void updateNode(n.id, { data: { color: p?.color ?? 'yellow', translucent: p?.translucent ?? false } })
+          }
         },
         redo: () => {
-          for (const n of targets) void updateNode(n.id, { data: { color: nextColor } })
+          for (const n of targets) void updateNode(n.id, { data: { color: nextColor, translucent: nextTranslucent } })
         },
       })
     },
@@ -584,6 +904,8 @@ function BoardCanvas() {
         onEdgesChange={onEdgesChange}
         onNodeDragStart={onNodeDragStart}
         onNodeDragStop={onNodeDragStop}
+        onSelectionDragStart={onSelectionDragStart}
+        onSelectionDragStop={onSelectionDragStop}
         onDelete={onDelete}
         onConnect={onConnect}
         onDoubleClick={onPaneDoubleClick}
@@ -593,15 +915,95 @@ function BoardCanvas() {
           style: { strokeWidth: 1.8 },
         }}
         zoomOnDoubleClick={false}
-        fitView
         proOptions={{ hideAttribution: false }}
         deleteKeyCode={['Backspace', 'Delete']}
-        panOnDrag={!isPen}
+        // FigJam 風: 左ドラッグは範囲選択、パンはホイールスクロール / 中・右ボタンドラッグ
+        panOnDrag={isPen ? false : [1, 2]}
+        panOnScroll
+        selectionOnDrag={!isPen}
+        selectionMode={SelectionMode.Partial}
         nodesDraggable={!isPen}
         elementsSelectable={!isPen}
       >
         <Background gap={20} size={1.5} />
       </ReactFlow>
+      {placing && (
+        <div
+          data-testid="place-overlay"
+          className={cn('absolute inset-0 z-[5]', placing === 'section' && 'cursor-crosshair')}
+          onPointerMove={(e) => {
+            const rect = wrapperRef.current?.getBoundingClientRect()
+            const local = rect ? { x: e.clientX - rect.left, y: e.clientY - rect.top } : null
+            setPlacePos(local)
+            if (placing === 'section' && drawStartFlowRef.current && local) {
+              setDrawRect((r) => (r ? { ...r, x1: local.x, y1: local.y } : r))
+            }
+          }}
+          onPointerLeave={() => setPlacePos(null)}
+          onPointerDown={
+            placing === 'section'
+              ? (e) => {
+                  ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+                  const rect = wrapperRef.current?.getBoundingClientRect()
+                  const local = rect
+                    ? { x: e.clientX - rect.left, y: e.clientY - rect.top }
+                    : { x: e.clientX, y: e.clientY }
+                  drawStartFlowRef.current = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+                  setDrawRect({ x0: local.x, y0: local.y, x1: local.x, y1: local.y })
+                }
+              : undefined
+          }
+          onPointerUp={
+            placing === 'section'
+              ? (e) => {
+                  const start = drawStartFlowRef.current
+                  drawStartFlowRef.current = null
+                  setDrawRect(null)
+                  if (!start) return
+                  const end = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+                  const w = Math.abs(end.x - start.x)
+                  const h = Math.abs(end.y - start.y)
+                  setPlacing(null)
+                  setPlacePos(null)
+                  if (w < 24 || h < 24) {
+                    // ほぼクリック: デフォルトサイズで配置
+                    void createItem('section', end, color)
+                  } else {
+                    void createSectionAt({ x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), w, h })
+                  }
+                }
+              : undefined
+          }
+          onClick={
+            placing === 'section'
+              ? undefined
+              : (e) => {
+                  const kind = placing
+                  setPlacing(null)
+                  setPlacePos(null)
+                  void createItem(kind, screenToFlowPosition({ x: e.clientX, y: e.clientY }), color)
+                }
+          }
+        >
+          {placing !== 'section' && placePos && (
+            <PlaceGhost kind={placing} color={color} pos={placePos} zoom={getZoom()} />
+          )}
+          {placing === 'section' && drawRect && (
+            <div
+              className={cn(
+                'pointer-events-none absolute rounded-lg border-2',
+                (SECTION_STYLES[color] ?? SECTION_STYLES.gray).frame,
+              )}
+              style={{
+                left: Math.min(drawRect.x0, drawRect.x1),
+                top: Math.min(drawRect.y0, drawRect.y1),
+                width: Math.abs(drawRect.x1 - drawRect.x0),
+                height: Math.abs(drawRect.y1 - drawRect.y0),
+              }}
+            />
+          )}
+        </div>
+      )}
       {isPen && (
         <div
           className="absolute inset-0 z-[5] cursor-crosshair"
@@ -636,14 +1038,29 @@ function BoardCanvas() {
       />
       <BoardToolbar
         activeTool={activeTool}
-        onSelectTool={() => setActiveTool('select')}
-        onPenTool={() => setActiveTool((t) => (t === 'pen' ? 'select' : 'pen'))}
-        onCreate={(kind, c) => void createItem(kind, viewportCenterFlowPos(), c)}
+        onSelectTool={() => {
+          setActiveTool('select')
+          setPlacing(null)
+          setPlacePos(null)
+        }}
+        onPenTool={() => {
+          setPlacing(null)
+          setPlacePos(null)
+          setActiveTool((t) => (t === 'pen' ? 'select' : 'pen'))
+        }}
+        placing={placing}
+        onPickPlace={(kind) => {
+          setActiveTool('select')
+          setPlacePos(null)
+          setPlacing((cur) => (cur === kind ? null : kind))
+        }}
         onImageClick={() => fileInputRef.current?.click()}
         selectedIds={selectedIds}
         onRecolor={recolorSelected}
         color={color}
         onColorChange={setColor}
+        translucent={translucent}
+        onTranslucentChange={setTranslucent}
       />
       <BoardZoomControl />
       <BoardSyncBadge />

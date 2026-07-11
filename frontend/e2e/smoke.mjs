@@ -8,12 +8,44 @@ const ng = (name, e) => { failed++; console.log(`  ❌ ${name}: ${e}`) }
 // 前回実行の残骸を掃除する。スモークが作る要素はビューポート中央＝シード付箋の
 // 真上に積み重なっていき、次回実行時のホバー/クリックを横取りしてしまうため。
 const WS = '00000000-0000-0000-0000-000000000001'
+const FIRST_BOARD = '00000000-0000-0000-0000-000000000003'
 {
-  const junkNames = ['スモークテキスト', '(empty sticky)', '(image)', '新しいボード']
   const nodes = await (await fetch(`http://localhost:8080/api/nodes?workspaceId=${WS}`)).json()
+  // セクションが残っていると、シード付箋が取り込まれたまま消される事故につながる。
+  // 中身をボード直下（絶対座標）へ救出してからセクションごと削除する
+  for (const s of nodes.filter((n) => n.type === 'section')) {
+    const sx = s.data.x ?? 0
+    const sy = s.data.y ?? 0
+    for (const c of nodes.filter((n) => n.parentId === s.id)) {
+      await fetch(`http://localhost:8080/api/nodes/${c.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentId: FIRST_BOARD, data: { x: (c.data.x ?? 0) + sx, y: (c.data.y ?? 0) + sy } }),
+      })
+    }
+    await fetch(`http://localhost:8080/api/nodes/${s.id}`, { method: 'DELETE' })
+  }
+  const junkNames = ['スモークテキスト', '(empty sticky)', '(image)', '新しいボード']
   for (const n of nodes) {
+    if (n.type === 'section') continue
     if (junkNames.includes(n.name) || n.name.startsWith('スモーク')) {
       await fetch(`http://localhost:8080/api/nodes/${n.id}`, { method: 'DELETE' })
+    }
+  }
+  // シード付箋の位置を正規化する（過去の実行でドラッグされていると、
+  // パン後に画面外/サイドバー下に隠れて接続テストが失敗するため）
+  const seedPos = [
+    { match: 'Kurariへようこそ', x: 120, y: 160 },
+    { match: '付箋を選択すると', x: 480, y: 330 },
+  ]
+  for (const { match, x, y } of seedPos) {
+    const seed = nodes.find((n) => n.type === 'sticky' && String(n.data.text ?? '').includes(match))
+    if (seed) {
+      await fetch(`http://localhost:8080/api/nodes/${seed.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentId: FIRST_BOARD, data: { x, y } }),
+      })
     }
   }
   const edges = await (await fetch(`http://localhost:8080/api/edges?workspaceId=${WS}`)).json()
@@ -32,15 +64,16 @@ try {
   await page.getByText('Kurariへようこそ 👋', { exact: false }).first().waitFor()
   ok('初期表示: ツリー + シード付箋がボードに表示')
 
-  // 2. ツールバーから付箋作成 → ツリーに出現
+  // 2. ツールバーから付箋作成（ツール選択 → カーソルで配置場所をクリック）→ ツリーに出現
   const treeRows = () => page.locator('[data-tree-id]').count()
   const before = await treeRows()
   await page.getByTitle('付箋を追加').click()
+  await page.getByTestId('place-overlay').click() // 中央に配置
   await page.waitForFunction(
     (n) => document.querySelectorAll('[data-tree-id]').length > n,
     before,
   )
-  ok('付箋作成 → 左ツリーに即時反映')
+  ok('付箋作成（配置モード） → 左ツリーに即時反映')
 
   // 3. 付箋を編集（ダブルクリック → 入力 → blur）— 作成直後は選択状態になるのでそれを狙う
   const sticky = page.locator('.react-flow__node.selected').first()
@@ -180,15 +213,17 @@ try {
   await page.locator('.react-flow__edge').first().waitFor({ timeout: 5000 })
   ok('要素間のドラッグ接続（矢印エッジ）')
 
-  // 19. テキストカードと図形（楕円）の作成 → ツリー反映
+  // 19. テキストカードと図形（楕円）の作成（配置モード） → ツリー反映
   await page.getByTitle('テキストカードを追加').click()
+  await page.getByTestId('place-overlay').click()
   await page.locator('.react-flow__node.selected').first().dblclick()
   await page.keyboard.type('スモークテキスト')
   await page.locator('.react-flow__pane').click({ position: { x: 40, y: 40 } })
   await page.locator('[data-tree-id]', { hasText: 'スモークテキスト' }).first().waitFor()
   await page.getByTitle('楕円を追加').click()
+  await page.getByTestId('place-overlay').click()
   await page.waitForTimeout(300)
-  ok('テキストカード・図形の作成 → ツリー同期')
+  ok('テキストカード・図形の作成（配置モード） → ツリー同期')
 
   // 20. エッジの永続化（リロード後も残る）
   await page.reload()

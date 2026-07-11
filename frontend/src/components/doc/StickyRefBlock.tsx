@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { createReactBlockSpec } from '@blocknote/react'
 import { insertOrUpdateBlockForSlashMenu } from '@blocknote/core'
 import type { BlockNoteEditor } from '@blocknote/core'
-import { useEntityStore } from '@/stores/entity-store'
+import { boardAncestorId, useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { cn } from '@/lib/utils'
 import { stickyData, type StickyColor } from '@/types/model'
@@ -92,8 +92,10 @@ function StickyRefView({
 
   const d = stickyData(node)
   const openOnBoard = () => {
-    if (!node.parentId) return
-    setActiveBoard(node.parentId)
+    // 親はセクションの場合があるので、所属ボードまで遡って開く
+    const boardId = boardAncestorId(useEntityStore.getState().nodes, node.parentId)
+    if (!boardId) return
+    setActiveBoard(boardId)
     setSelected([node.id], { pan: true })
     navigate('/board')
   }
