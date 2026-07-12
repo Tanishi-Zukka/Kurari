@@ -387,9 +387,15 @@ function BoardCanvas() {
           if (c.selected) next.add(c.id)
           else next.delete(c.id)
         }
+        const snapshot = useEntityStore.getState().nodes
+        // ツリー選択由来のボード等（RFノードでないID）が残っていると、下の祖先チェックで
+        // 選択した要素が全部除外されてしまうため、先にボード要素以外を落とす
+        for (const id of [...next]) {
+          const n = snapshot[id]
+          if (n && !BOARD_ITEM_TYPES.includes(n.type) && n.type !== 'section') next.delete(id)
+        }
         // セクションとその中身（入れ子の孫を含む）が同時に選択されたら中身を外す。
         // 両方選択のままドラッグすると、中身が親の移動+自身の移動で二重に動いてしまうため
-        const snapshot = useEntityStore.getState().nodes
         for (const id of [...next]) {
           let p = snapshot[id]?.parentId
           while (p) {
