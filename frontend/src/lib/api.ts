@@ -19,6 +19,32 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
+/** AIジョブ作成。type ごとに必要なフィールドが異なる（backend の AiJobType 参照） */
+export interface CreateAiJobRequest {
+  type:
+    | 'summarize_board'
+    | 'summarize_selection'
+    | 'brainstorm'
+    | 'summarize_document'
+    | 'draft_document'
+    | 'summarize_transcript'
+    | 'project_brief'
+    | 'detect_conflicts'
+    | 'extract_decisions'
+    | 'chat_reply'
+  /** board / document / project など、種別ごとの主対象ノード */
+  targetId?: string
+  /** summarize_selection: 選択された要素のID一覧 */
+  nodeIds?: string[]
+  /** chat_reply: 会話履歴を持つ chat_room ノード */
+  chatRoomId?: string
+  prompt?: string
+  /** summarize_transcript: クライアントで文字起こししたテキスト */
+  sourceText?: string
+  /** 選択中の実行エンジン。通常は lib/ai-run.ts の createAiJob が自動付与する */
+  runner?: string
+}
+
 export interface UpsertNodeRequest {
   id: string
   workspaceId: string
@@ -44,7 +70,7 @@ export const api = {
   deleteEdge: (id: string) => request<void>(`/api/edges/${id}`, { method: 'DELETE' }),
 
   aiStatus: () => request<AiStatus>('/api/ai/status'),
-  createAiJob: (body: { type: string; boardId: string; prompt?: string }) =>
+  createAiJob: (body: CreateAiJobRequest) =>
     request<AiJob>('/api/ai/jobs', { method: 'POST', body: JSON.stringify(body) }),
   getAiJob: (id: string) => request<AiJob>(`/api/ai/jobs/${id}`),
 

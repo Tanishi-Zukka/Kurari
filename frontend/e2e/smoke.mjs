@@ -28,7 +28,15 @@ const FIRST_BOARD = '00000000-0000-0000-0000-000000000003'
   const junkNames = ['スモークテキスト', '(empty sticky)', '(image)', '新しいボード']
   for (const n of nodes) {
     if (n.type === 'section') continue
-    if (junkNames.includes(n.name) || n.name.startsWith('スモーク')) {
+    // チャット履歴・AI Mode の保存物は毎回積み増しになるので消す
+    if (
+      n.type === 'chat_room' ||
+      (n.type === 'group' && n.name === '意思決定ログ') ||
+      (n.type === 'ai_summary' && n.name.includes('プロジェクト説明')) ||
+      n.data?.aiGenerated === true ||
+      junkNames.includes(n.name) ||
+      n.name.startsWith('スモーク')
+    ) {
       await fetch(`http://localhost:8080/api/nodes/${n.id}`, { method: 'DELETE' })
     }
   }
@@ -268,6 +276,57 @@ try {
   await page.locator('[data-tree-id]', { hasText: /^First Board$/ }).first().click()
   await page.locator('.react-flow__node', { hasText: 'Kurariへようこそ' }).first().waitFor()
   ok('ボード切替（ツリーから）')
+
+  // 23. AIチャット: Chatタブ → 送信 → AI応答（サーバー作成のmessageノード）→ ツリーに部屋
+  await page.getByRole('button', { name: 'Chat' }).click()
+  await page.getByTestId('chat-input').fill('このボードには何がありますか?')
+  await page.getByTestId('chat-send').click()
+  await page.getByTestId('chat-msg-user').first().waitFor()
+  await page.getByTestId('chat-msg-ai').first().waitFor({ timeout: 120000 })
+  await page.locator('[data-tree-id]', { hasText: 'AIチャット' }).first().waitFor()
+  ok('AIチャット（送信 → AI応答 → ツリーに chat_room）')
+
+  // 24. AI Mode: プロジェクト説明の生成 → ツリー保存
+  await page.getByRole('link', { name: /^AI$/ }).click()
+  await page.getByRole('button', { name: '説明を生成' }).click()
+  await page.locator('main').getByText('done', { exact: true }).waitFor({ timeout: 120000 })
+  await page.getByRole('button', { name: 'ツリーに保存' }).first().click()
+  await page.locator('[data-tree-id]', { hasText: 'プロジェクト説明' }).first().waitFor()
+  ok('AI Mode（プロジェクト説明の生成 → ツリー保存）')
+
+  // 25. ボードAI: ブレスト生成 → 配置 → undo で複数枚が一度に消える
+  await page.getByRole('link', { name: /Board/ }).click()
+  await page.locator('.react-flow__node', { hasText: 'Kurariへようこそ' }).first().waitFor()
+  await page.getByRole('button', { name: 'AI', exact: true }).click()
+  await page.getByRole('button', { name: 'アイデアを生成' }).click()
+  const placeIdeasBtn = page.getByRole('button', { name: /ボードに配置（\d+枚）/ })
+  await placeIdeasBtn.waitFor({ timeout: 120000 })
+  const flowCountBefore = await page.locator('.react-flow__node').count()
+  await placeIdeasBtn.click()
+  await page.waitForFunction(
+    (n) => document.querySelectorAll('.react-flow__node').length > n,
+    flowCountBefore,
+  )
+  await page.getByTitle('元に戻す').click()
+  await page.waitForFunction(
+    (n) => document.querySelectorAll('.react-flow__node').length === n,
+    flowCountBefore,
+  )
+  ok('ボードAIブレスト（生成 → 配置 → undoで一括削除）')
+
+  // 26. ドキュメントAI: 要約 → 文末に挿入 → リロード後も残る
+  await page.getByRole('link', { name: /Doc/ }).click()
+  await page.getByRole('button', { name: 'スモーク設計メモ' }).first().click()
+  await page.getByRole('button', { name: '要約', exact: true }).click()
+  await page.getByRole('button', { name: '文末に挿入' }).waitFor({ timeout: 120000 })
+  await page.getByRole('button', { name: '文末に挿入' }).click()
+  await page.locator('.bn-editor').getByText('要約', { exact: true }).first().waitFor()
+  await page.getByText('保存済み', { exact: true }).waitFor({ timeout: 10000 })
+  await page.reload()
+  await page.getByRole('link', { name: /Doc/ }).click()
+  await page.getByRole('button', { name: 'スモーク設計メモ' }).first().click()
+  await page.locator('.bn-editor').getByText('要約', { exact: true }).first().waitFor()
+  ok('ドキュメントAI要約（文末に挿入 → 永続化）')
 } catch (e) {
   ng('スモークテスト', e.message?.split('\n')[0])
   await page.screenshot({ path: new URL('./smoke-failure.png', import.meta.url).pathname })

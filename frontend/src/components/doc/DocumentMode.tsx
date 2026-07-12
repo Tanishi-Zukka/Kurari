@@ -12,6 +12,7 @@ import { childrenOf, useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { syncHeadingBlocks, type LooseBlock } from '@/lib/doc-sync'
 import { StickyRefBlockSpec, insertStickyRefItem } from './StickyRefBlock'
+import { DocAiToolbar, type DocEditorHandle } from './DocAiToolbar'
 import { Button } from '@/components/ui/primitives'
 import { FileText, Plus } from 'lucide-react'
 
@@ -183,6 +184,13 @@ function DocEditor({ docId }: { docId: string }) {
             if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
           }}
         />
+        <div className="mt-2">
+          <DocAiToolbar
+            docId={docId}
+            editor={editor as unknown as DocEditorHandle}
+            doSave={doSave}
+          />
+        </div>
       </div>
       <div className="mx-auto w-full max-w-3xl flex-1 px-4 pb-16">
         <BlockNoteView editor={editor} theme="light" onChange={scheduleSave} slashMenu={false}>

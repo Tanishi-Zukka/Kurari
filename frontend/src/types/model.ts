@@ -195,10 +195,17 @@ export interface AiJob {
   updatedAt: string
 }
 
+export interface AiRunnerInfo {
+  id: string
+  label: string
+}
+
 export interface AiStatus {
   agent: 'online' | 'offline'
   mockMode: boolean
   lastSeenAt: string | null
+  /** online のとき、Agent が利用できる実行エンジン一覧（ページ側で選択する） */
+  runners?: AiRunnerInfo[]
 }
 
 export type ServerEvent =

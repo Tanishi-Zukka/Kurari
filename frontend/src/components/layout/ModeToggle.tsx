@@ -5,7 +5,7 @@ import { LayoutDashboard, FileText, Sparkles, Phone } from 'lucide-react'
 const MODES = [
   { to: '/board', label: 'Board', icon: LayoutDashboard, planned: false },
   { to: '/doc', label: 'Doc', icon: FileText, planned: false },
-  { to: '/ai', label: 'AI', icon: Sparkles, planned: true },
+  { to: '/ai', label: 'AI', icon: Sparkles, planned: false },
   { to: '/call', label: 'Call', icon: Phone, planned: true },
 ]
 

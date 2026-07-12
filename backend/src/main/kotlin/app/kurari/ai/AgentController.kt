@@ -13,6 +13,16 @@ data class CompleteJobRequest(
     val error: String? = null,
 )
 
+data class RunnerInfo(
+    val id: String,
+    val label: String,
+)
+
+data class HeartbeatRequest(
+    /** Agent が利用できる実行エンジン一覧。ページ側のセレクタ表示用 */
+    val runners: List<RunnerInfo>? = null,
+)
+
 /**
  * Kurari Agent（ローカル常駐ワーカー）専用のエンドポイント。
  * Agent は外向き接続のみでジョブを取得し、Copilot CLI の実行結果を書き戻す。
@@ -23,8 +33,8 @@ data class CompleteJobRequest(
 class AgentController(private val service: AiJobService) {
 
     @PostMapping("/heartbeat")
-    fun heartbeat(): Map<String, String> {
-        service.heartbeat()
+    fun heartbeat(@RequestBody(required = false) req: HeartbeatRequest?): Map<String, String> {
+        service.heartbeat(req?.runners)
         return mapOf("status" to "ok")
     }
 

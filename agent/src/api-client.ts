@@ -1,9 +1,16 @@
 import type { AiJob } from './types.js'
 
+export interface RunnerInfo {
+  id: string
+  label: string
+}
+
 export class ApiClient {
   constructor(
     private readonly server: string,
     private readonly token?: string,
+    /** 利用可能な実行エンジン一覧。ページ側のセレクタ表示用にheartbeatで通知する */
+    private readonly runners: RunnerInfo[] = [],
   ) {}
 
   private headers(): Record<string, string> {
@@ -16,6 +23,7 @@ export class ApiClient {
     const res = await fetch(`${this.server}/api/agent/heartbeat`, {
       method: 'POST',
       headers: this.headers(),
+      body: JSON.stringify({ runners: this.runners }),
     })
     if (!res.ok) throw new Error(`heartbeat failed: ${res.status}`)
   }

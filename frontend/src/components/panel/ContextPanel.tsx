@@ -3,12 +3,13 @@ import { useUiStore, type PanelTab } from '@/stores/ui-store'
 import { cn } from '@/lib/utils'
 import { CommentsTab } from './CommentsTab'
 import { AiTab } from './AiTab'
+import { ChatTab } from './ChatTab'
 import { StickyNote, LayoutDashboard, MessageSquare, Sparkles, History, CheckCheck } from 'lucide-react'
 
 const TABS: { id: PanelTab; label: string; icon: typeof MessageSquare; disabled?: boolean }[] = [
   { id: 'comments', label: 'Comments', icon: MessageSquare },
   { id: 'ai', label: 'AI', icon: Sparkles },
-  { id: 'chat', label: 'Chat', icon: MessageSquare, disabled: true },
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'activity', label: 'Activity', icon: History, disabled: true },
   { id: 'decisions', label: 'Decisions', icon: CheckCheck, disabled: true },
 ]
@@ -66,9 +67,10 @@ export function ContextPanel() {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className={cn('flex-1', panelTab === 'chat' ? 'min-h-0 overflow-hidden' : 'overflow-y-auto')}>
         {panelTab === 'comments' && <CommentsTab contextNodeId={contextNode?.id ?? null} />}
         {panelTab === 'ai' && <AiTab />}
+        {panelTab === 'chat' && <ChatTab />}
       </div>
     </aside>
   )

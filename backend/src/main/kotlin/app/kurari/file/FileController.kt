@@ -28,9 +28,10 @@ class FileController(
 
     @PostMapping
     fun upload(@RequestParam("file") file: MultipartFile): Map<String, String> {
+        // 画像（ボード貼り付け）と音声（ドキュメントの録音メモ）のみ許可
         val contentType = file.contentType
-        if (contentType == null || !contentType.startsWith("image/")) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "image files only")
+        if (contentType == null || !(contentType.startsWith("image/") || contentType.startsWith("audio/"))) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "image or audio files only")
         }
         if (file.size > MAX_FILE_SIZE_BYTES) {
             throw ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "file too large")

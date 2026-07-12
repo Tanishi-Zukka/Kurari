@@ -44,7 +44,7 @@ cd backend && ./gradlew bootRun --args='--spring.profiles.active=embedded'
 cd frontend && npm install && npm run dev
 ```
 
-### 3. (任意) AI要約を実機で使う — Kurari Agent
+### 3. (任意) AI機能を実機で使う — Kurari Agent
 
 ローカルAI CLI (`copilot`) がインストール・ログイン済みであること。
 
@@ -52,17 +52,45 @@ cd frontend && npm install && npm run dev
 cd agent && npm install && npm start
 ```
 
+Agent は起動時に使えるAIエンジンをすべて検出して公開します。
+**どのエンジンで実行するかはページ上のセレクタ（ステータスバー / AIタブ / AI Mode）で
+ジョブごとに切り替えられます**（Agent の再起動は不要）:
+
+- **Copilot CLI** — `copilot` がインストール・ログイン済みのとき
+- **Apple Intelligence** — macOS 26+ / Apple Silicon。初回起動時に Swift ラッパー
+  （`agent/apple/`）を自動ビルド（Xcode Command Line Tools が必要）。
+  オンデバイスモデルはコンテキストが小さいため、長い入力は自動で中間を省略します。
+  ネットワーク不要・無料で動くのが利点です
+- **Ollama** — `http://localhost:11434` で起動中のとき。モデルは
+  `--ollama-model <name>`（既定はインストール済みの先頭）、URLは `--ollama-url` で変更可能
+
 http://localhost:5173 を開く。
 
-- Agent 起動中: AI要約はローカルAI CLIで実行され、ステータスバーに `AI Agent: online` と表示されます
-- Agent 未起動: AI要約はバックエンドの Mock 応答になります（`kurari.ai.mock=true` のとき）
+- Agent 起動中: AI機能はローカルAI CLIで実行され、ステータスバーに `AI Agent: online` と表示されます
+- Agent 未起動: AI機能はバックエンドの Mock 応答になります（`kurari.ai.mock=true` のとき）
 
 ## AIの仕組み（ジョブキュー＋ローカルAgent）
 
 バックエンドはLLMを実行しません。Webアプリが AIジョブを登録すると、
 あなたのPCで動く Kurari Agent が外向きポーリングでジョブを取得し、
 `copilot -p <prompt> -s` を実行して結果を書き戻します。
+種別ごとのプロンプト（instruction）はバックエンドがジョブに同梱するため、
+Agent はジョブ種別を知りません（種別追加で Agent の更新は不要）。
 この分離により、バックエンドを将来AWSへデプロイしてもAI機能はそのまま動きます。
+
+### AI機能一覧
+
+- **AIチャット** — 右パネルの Chat タブ（開いているボード/ドキュメントが文脈）と、
+  AI Mode 内のプロジェクト横断チャット。履歴は `chat_room`/`message` ノードとしてツリーに保存され、
+  AI応答はサーバー側で書き込まれるためブラウザを閉じても欠けません
+- **AI Mode（/ai）** — プロジェクト全体を横断する分析画面。
+  新規参加者向けのプロジェクト説明 / ボード・ドキュメント・チャット間の矛盾検出 /
+  意思決定・未解決事項の抽出（`decision`/`open_question` ノードとして「意思決定ログ」に保存可能）
+- **ボードAI** — ボード要約、選択要素の要約→付箋として配置、
+  テーマからのブレスト付箋一括生成（いずれも Undo 対応、AI付箋は青色）
+- **ドキュメントAI** — AI下書き（指示→カーソル位置に挿入）、続きの生成、要約（文末挿入/ツリー保存）、
+  **録音メモ**（録音→音声ブロック+文字起こし+AI要約を本文に挿入。
+  文字起こしは Chrome 系の Web Speech API を使用）
 
 ## E2Eスモークテスト
 
@@ -72,8 +100,9 @@ backend / frontend / (任意で agent) を起動した状態で:
 cd frontend && node e2e/smoke.mjs
 ```
 
-ツリー同期・付箋編集・コメント・AI要約・永続化・モード切替・Document Mode
-（作成・見出しのツリー同期・永続化）の14項目を検証します。
+ツリー同期・付箋編集・コメント・永続化・モード切替・Document Mode・
+AI機能（要約・チャット・AI Mode・ブレスト・ドキュメント要約）の27項目を検証します。
+Agent 未起動でも Mock 応答で全項目が通ります。
 
 ## Document Mode
 

@@ -13,6 +13,8 @@ interface UiState {
   panelOpen: boolean
   wsState: WsState
   aiStatus: AiStatus | null
+  /** 選択中のAI実行エンジン（copilot-cli / apple-ai / ollama）。localStorage に永続化 */
+  aiRunner: string | null
   /** ツリー側から選択したとき、ボードにパンを要求するためのフラグ */
   panRequestId: string | null
   /** ツリーの見出しクリックでエディタ内ブロックへのスクロールを要求（BlockNoteのblock id） */
@@ -28,6 +30,7 @@ interface UiState {
   togglePanel: () => void
   setWsState: (s: WsState) => void
   setAiStatus: (s: AiStatus | null) => void
+  setAiRunner: (id: string) => void
   clearPanRequest: () => void
   requestDocScroll: (blockId: string) => void
   clearDocScroll: () => void
@@ -43,6 +46,7 @@ export const useUiStore = create<UiState>((set) => ({
   panelOpen: true,
   wsState: 'connecting',
   aiStatus: null,
+  aiRunner: localStorage.getItem('kurari.aiRunner'),
   panRequestId: null,
   docScrollBlockId: null,
   showHandles: false,
@@ -58,6 +62,10 @@ export const useUiStore = create<UiState>((set) => ({
   togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
   setWsState: (wsState) => set({ wsState }),
   setAiStatus: (aiStatus) => set({ aiStatus }),
+  setAiRunner: (id) => {
+    localStorage.setItem('kurari.aiRunner', id)
+    set({ aiRunner: id })
+  },
   clearPanRequest: () => set({ panRequestId: null }),
   toggleShowHandles: () => set((s) => ({ showHandles: !s.showHandles })),
 }))

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
+import { useAiJobStore } from '@/stores/ai-job-store'
 import { connectWs } from '@/lib/ws'
 import { api } from '@/lib/api'
 import { Header } from '@/components/layout/Header'
@@ -10,7 +11,8 @@ import { TreeView } from '@/components/sidebar/TreeView'
 import { ContextPanel } from '@/components/panel/ContextPanel'
 import { BoardMode } from '@/components/board/BoardMode'
 import { DocumentMode } from '@/components/doc/DocumentMode'
-import { AiModePlaceholder, CallPlaceholder } from '@/components/modes/Placeholders'
+import { CallPlaceholder } from '@/components/modes/Placeholders'
+import { AiMode } from '@/components/modes/AiMode'
 
 export default function App() {
   const load = useEntityStore((s) => s.load)
@@ -31,6 +33,7 @@ export default function App() {
   useEffect(() => {
     const disconnect = connectWs((ev) => {
       if (ev.type.startsWith('node.') || ev.type.startsWith('edge.')) applyServerEvent(ev)
+      else if (ev.type === 'ai_job.updated') useAiJobStore.getState().upsert(ev.payload)
     }, setWsState)
     return disconnect
   }, [applyServerEvent, setWsState])
@@ -67,7 +70,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/board" replace />} />
             <Route path="/board" element={<BoardMode />} />
             <Route path="/doc" element={<DocumentMode />} />
-            <Route path="/ai" element={<AiModePlaceholder />} />
+            <Route path="/ai" element={<AiMode />} />
             <Route path="/call" element={<CallPlaceholder />} />
           </Routes>
         </main>

@@ -1,6 +1,7 @@
 import { useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { Badge } from '@/components/ui/primitives'
+import { RunnerSelect } from '@/components/ui/RunnerSelect'
 
 export function StatusBar() {
   const nodeCount = useEntityStore((s) => Object.keys(s.nodes).length)
@@ -20,6 +21,7 @@ export function StatusBar() {
       ) : (
         <Badge tone="neutral">AI: …</Badge>
       )}
+      <RunnerSelect className="h-5" />
       <span className="ml-auto">{nodeCount} nodes</span>
     </footer>
   )

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Sparkles, Phone } from 'lucide-react'
+import { Phone } from 'lucide-react'
 
 function Placeholder({
   icon,
@@ -32,21 +32,6 @@ function Placeholder({
         </ul>
       </div>
     </div>
-  )
-}
-
-export function AiModePlaceholder() {
-  return (
-    <Placeholder
-      icon={<Sparkles size={18} />}
-      title="AI Mode"
-      description="プロジェクト全体を横断するAI分析画面。軽い操作は右のAIタブで今すぐ使えます。"
-      bullets={[
-        '新規参加者向けのプロジェクト説明',
-        'ボード・ドキュメント・チャットの矛盾検出',
-        '意思決定・未解決事項の抽出',
-      ]}
-    />
   )
 }
 

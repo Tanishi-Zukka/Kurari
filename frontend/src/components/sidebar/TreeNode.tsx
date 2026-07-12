@@ -6,8 +6,9 @@ import { cn } from '@/lib/utils'
 import type { TreeItem } from './TreeView'
 import { BOARD_ITEM_TYPES, type NodeType } from '@/types/model'
 import {
-  Boxes, Folder, LayoutDashboard, StickyNote, MessageSquare, Sparkles,
+  Boxes, Folder, LayoutDashboard, StickyNote, MessageSquare, MessagesSquare, Sparkles,
   FileText, ChevronRight, ChevronDown, Trash2, Layers, Hash, Type, Square, Plus, Frame,
+  CheckCheck, HelpCircle,
 } from 'lucide-react'
 
 const ICONS: Partial<Record<NodeType, typeof Boxes>> = {
@@ -23,11 +24,16 @@ const ICONS: Partial<Record<NodeType, typeof Boxes>> = {
   document: FileText,
   block: Hash,
   group: Layers,
+  chat_room: MessagesSquare,
+  message: MessageSquare,
+  decision: CheckCheck,
+  open_question: HelpCircle,
 }
 
 export function TreeNodeRow({ item }: { item: TreeItem }) {
   const { node, depth, children } = item
-  const [expanded, setExpanded] = useState(true)
+  // チャット履歴はメッセージ数が多くツリーが氾濫するため初期折りたたみ
+  const [expanded, setExpanded] = useState(node.type !== 'chat_room')
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(node.name)
 
@@ -100,6 +106,11 @@ export function TreeNodeRow({ item }: { item: TreeItem }) {
     if (node.type === 'comment') {
       if (node.parentId) setSelected([node.parentId], { pan: true })
       setPanelTab('comments')
+      return
+    }
+    if (node.type === 'chat_room' || node.type === 'message') {
+      setPanelTab('chat')
+      setSelected([node.id])
       return
     }
     setSelected([node.id])

@@ -41,3 +41,6 @@ frontend/e2e/playwright-report/
 
 # temp
 temp/
+
+# Kurari Agent: Apple Intelligence ラッパーのビルド成果物（初回起動時に自動ビルド）
+agent/apple/kurari-apple-ai
