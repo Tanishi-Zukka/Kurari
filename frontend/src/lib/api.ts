@@ -1,11 +1,19 @@
 import type { AiJob, AiStatus, KEdge, KNode, NodeType } from '@/types/model'
+import { getAccessToken, notifyUnauthorized } from '@/lib/access-token'
+
+/** LAN 参加者はアクセストークンを常時付与する（オーナーは null なので付かない） */
+function authHeaders(): Record<string, string> {
+  const token = getAccessToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     ...init,
   })
   if (!res.ok) {
+    if (res.status === 401) notifyUnauthorized() // backend 再起動などでトークン失効 → ゲートへ
     let message = `${res.status} ${res.statusText}`
     try {
       const body = await res.json()
@@ -78,8 +86,9 @@ export const api = {
   uploadFile: async (file: File): Promise<{ url: string }> => {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch('/api/files', { method: 'POST', body: form })
+    const res = await fetch('/api/files', { method: 'POST', body: form, headers: authHeaders() })
     if (!res.ok) {
+      if (res.status === 401) notifyUnauthorized()
       let message = `${res.status} ${res.statusText}`
       try {
         const body = await res.json()

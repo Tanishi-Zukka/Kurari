@@ -20,13 +20,13 @@ cd backend && ./gradlew bootRun
 # Docker なし: embedded PG（backend/data/pg に永続化。Docker側とはデータ別物）
 cd backend && ./gradlew bootRun --args='--spring.profiles.active=embedded'
 
-# frontend (:5173)
+# frontend (:5173) — 自己署名 HTTPS（https://localhost:5173）。LAN にも公開される
 cd frontend && npm run dev
 
 # 検証
 cd frontend && npx tsc -b          # 型チェック（lint は oxlint）
 cd backend && ./gradlew compileKotlin
-cd frontend && node e2e/smoke.mjs  # E2Eスモーク(31項目)。両サーバ起動が前提。mockなら約3分、実agent接続時はAI待ちが増える
+cd frontend && node e2e/smoke.mjs  # E2Eスモーク(37項目)。両サーバ起動が前提。mockなら約3分、実agent接続時はAI待ちが増える
 ```
 
 - スキーマ変更は Flyway マイグレーション必須（`backend/src/main/resources/db/migration/V*.sql`）。
@@ -44,6 +44,18 @@ cd frontend && node e2e/smoke.mjs  # E2Eスモーク(31項目)。両サーバ起
 - 開発シードのワークスペース ID は `00000000-0000-0000-0000-000000000001`、
   First Board は `...0003`。E2E やデバッグスクリプトはこれを直接叩く。
 - 変更は REST（`/api/nodes`, `/api/edges`）＋ WebSocket ブロードキャストで全クライアント同期。
+- **presence（オンライン一覧・カーソル・編集中）は DB に持たずメモリ管理**（`ws/PresenceRegistry`）。
+  WS `/ws` は双方向で、クライアントが `presence.join` / `presence.update` を送る（他は従来どおり受信専用）。
+  ユーザー識別はローカル（localStorage `kurari.identity`、users テーブルなし）。
+  フロントは `stores/presence-store.ts` が peers（低頻度）/ cursors（20Hz）を分割保持
+  — Header 等は peers だけ購読し、カーソル毎の再レンダーを避ける。
+- **LAN 共有はオーナー承認制**（`access/` パッケージ、メモリ管理）。オーナー = 実効 IP が
+  loopback。実効 IP は「Vite プロキシ（xfwd）が付ける X-Forwarded-For の**末尾要素**」で判定
+  （先頭は偽装可能なので使わない。`access/ClientIp.kt`）。localhost 直叩き（agent・E2E・curl）
+  は XFF なし = オーナー扱いなので**認可の追加対応は不要**。メンバーは REST が
+  `Authorization: Bearer`、WS が `?token=`（`lib/access-token.ts` が保管ハブ）。
+  API を新設したら自動的にゲート配下に入る（認可前に呼ばせたい場合のみ
+  `AccessInterceptor.isPreAuth` の許可リストへ追加）。
 
 ## AIジョブの約束事
 

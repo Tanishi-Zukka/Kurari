@@ -236,7 +236,39 @@ export interface AiStatus {
   runners?: AiRunnerInfo[]
 }
 
+export type PresenceMode = 'board' | 'doc' | 'ai' | 'call'
+
+/** ボード上のカーソル位置（flow 座標） */
+export interface PresenceCursor {
+  x: number
+  y: number
+}
+
+/** 「どの画面のどこを見ているか」。doc 編集中は editing=true */
+export interface PresenceLocation {
+  mode: PresenceMode
+  boardId?: string | null
+  docId?: string | null
+  editing?: boolean
+}
+
+/** 接続中クライアント1つ分のプレゼンス。sessionId はサーバ採番（同一人物の複数タブは別エントリ） */
+export interface PresencePeer {
+  sessionId: string
+  clientId: string
+  name: string
+  color: StickyColor
+  location: PresenceLocation
+  cursor: PresenceCursor | null
+  selectedIds: string[]
+}
+
 export type ServerEvent =
   | { type: 'node.created' | 'node.updated' | 'node.deleted'; payload: KNode }
   | { type: 'edge.created' | 'edge.updated' | 'edge.deleted'; payload: KEdge }
   | { type: 'ai_job.updated'; payload: AiJob }
+  | { type: 'presence.joined'; payload: { sessionId: string; peers: PresencePeer[] } }
+  | { type: 'presence.peers'; payload: PresencePeer[] }
+  | { type: 'presence.updated'; payload: PresencePeer }
+  | { type: 'access.requested'; payload: { requestId: string; name: string; requestedAt: string } }
+  | { type: 'access.resolved'; payload: { requestId: string; status: string } }

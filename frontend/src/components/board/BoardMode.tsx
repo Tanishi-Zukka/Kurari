@@ -18,6 +18,7 @@ import '@xyflow/react/dist/style.css'
 import { childrenOf, useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { useHistoryStore } from '@/stores/history-store'
+import { usePresenceStore } from '@/stores/presence-store'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import {
@@ -37,6 +38,7 @@ import { BoardEdge } from './BoardEdge'
 import { BoardToolbar, type NewItemKind, type BoardTool } from './BoardToolbar'
 import { BoardZoomControl } from './BoardZoomControl'
 import { BoardSyncBadge } from './BoardSyncBadge'
+import { RemotePresenceLayer } from './RemotePresenceLayer'
 import {
   stickyData,
   drawingData,
@@ -164,6 +166,8 @@ function BoardCanvas() {
   const setSelected = useUiStore((s) => s.setSelected)
   const panRequestId = useUiStore((s) => s.panRequestId)
   const clearPanRequest = useUiStore((s) => s.clearPanRequest)
+  const panPointRequest = useUiStore((s) => s.panPointRequest)
+  const clearPanPointRequest = useUiStore((s) => s.clearPanPointRequest)
 
   const { setCenter, screenToFlowPosition, getZoom, getInternalNode, fitView } = useReactFlow()
   const nodesInitialized = useNodesInitialized()
@@ -332,6 +336,13 @@ function BoardCanvas() {
     }
     clearPanRequest()
   }, [panRequestId, nodesInitialized, nodes, setCenter, clearPanRequest])
+
+  // 座標指定のパン要求（プレゼンスの「相手の場所へジャンプ」）。上と同じく nodesInitialized 待ち必須
+  useEffect(() => {
+    if (!panPointRequest || !nodesInitialized) return
+    setCenter(panPointRequest.x, panPointRequest.y, { zoom: 1, duration: 400 })
+    clearPanPointRequest()
+  }, [panPointRequest, nodesInitialized, setCenter, clearPanPointRequest])
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -894,6 +905,12 @@ function BoardCanvas() {
     <div
       ref={wrapperRef}
       className="relative h-full w-full"
+      onPointerMove={(e) =>
+        usePresenceStore
+          .getState()
+          .sendCursor(screenToFlowPosition({ x: e.clientX, y: e.clientY }))
+      }
+      onPointerLeave={() => usePresenceStore.getState().sendCursor(null)}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault()
@@ -932,6 +949,7 @@ function BoardCanvas() {
         elementsSelectable={!isPen}
       >
         <Background gap={20} size={1.5} />
+        <RemotePresenceLayer boardId={activeBoardId} />
       </ReactFlow>
       {placing && (
         <div

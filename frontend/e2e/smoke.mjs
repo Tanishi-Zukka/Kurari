@@ -1,6 +1,7 @@
 import { chromium } from 'playwright'
+import os from 'node:os'
 
-const BASE = 'http://localhost:5173'
+const BASE = 'https://localhost:5173' // dev サーバは自己署名 HTTPS（ignoreHTTPSErrors で許可）
 let failed = 0
 const ok = (name) => console.log(`  ✅ ${name}`)
 const ng = (name, e) => { failed++; console.log(`  ❌ ${name}: ${e}`) }
@@ -62,7 +63,16 @@ const FIRST_BOARD = '00000000-0000-0000-0000-000000000003'
 }
 
 const browser = await chromium.launch()
-const page = await browser.newPage()
+// メインページは identity を事前シードして初回の名前入力モーダルをスキップする
+// （既存項目をプレゼンス導入前と同じ手順のまま走らせるため）
+const ctx = await browser.newContext({ ignoreHTTPSErrors: true })
+await ctx.addInitScript(() => {
+  localStorage.setItem(
+    'kurari.identity',
+    JSON.stringify({ clientId: 'e2e-main-client-0001', name: 'スモーク太郎', color: 'blue' }),
+  )
+})
+const page = await ctx.newPage()
 page.setDefaultTimeout(15000)
 
 try {
@@ -365,6 +375,86 @@ try {
     () => document.querySelectorAll('[data-testid="decision-item"]').length === 0,
   )
   ok('付箋→意思決定ログ化 → undoで一括取り消し')
+
+  // ---- 以降のマルチクライアント項目は LAN IP が必要（メンバーは LAN 経由でだけゲートを通る） ----
+  const lanIp = Object.values(os.networkInterfaces())
+    .flat()
+    .find((i) => i && i.family === 'IPv4' && !i.internal)?.address
+  if (!lanIp) throw new Error('LAN IP が見つからないため access/presence 項目を実行できません')
+
+  // 31. access: オーナーが招待リンクを発行 → LAN の参加者がリクエスト → 承認で入室
+  await page.getByTitle('LANのメンバーを招待').click()
+  const inviteUrl = await page.getByTestId('invite-url').inputValue()
+  await page.getByTitle('LANのメンバーを招待').click() // ポップオーバーを閉じる
+  if (!inviteUrl.startsWith('https://')) throw new Error(`招待URLが不正: ${inviteUrl}`)
+  const ctxB = await browser.newContext({ ignoreHTTPSErrors: true })
+  const pageB = await ctxB.newPage()
+  pageB.setDefaultTimeout(15000)
+  await pageB.goto(inviteUrl)
+  await pageB.getByTestId('join-name-input').fill('スモーク花子')
+  await pageB.getByTestId('join-submit').click()
+  await pageB.getByTestId('join-waiting').waitFor()
+  await page.getByTestId('access-request-banner').waitFor()
+  await page.getByTestId('access-approve').click()
+  await pageB.getByText('First Board').first().waitFor({ timeout: 10000 }) // 承認後アプリ本体が開く
+  ok('access: 招待リンク → 参加リクエスト → 承認で入室')
+
+  // 32. presence: ヘッダーのアバターが相互に見える
+  await page.locator('[data-testid="presence-avatar"][data-peer-name="スモーク花子"]').waitFor()
+  await pageB.locator('[data-testid="presence-avatar"][data-peer-name="スモーク太郎"]').waitFor()
+  ok('presence: オンラインメンバーが相互に表示')
+
+  // 33. presence: 相手のボードにリモートカーソルが出る
+  await page.getByRole('link', { name: /Board/ }).click()
+  await pageB.getByRole('link', { name: /Board/ }).click()
+  await pageB.locator('.react-flow__pane').first().waitFor()
+  // 送信は 50ms throttle なので、出るまで動かし続けながら待つ
+  const remoteCursor = page.locator('[data-testid="remote-cursor"][data-peer-name="スモーク花子"]')
+  for (let i = 0; i < 50 && (await remoteCursor.count()) === 0; i++) {
+    await pageB.mouse.move(400 + (i % 10) * 20, 250 + (i % 7) * 15)
+    await pageB.waitForTimeout(100)
+  }
+  await remoteCursor.first().waitFor()
+  ok('presence: リモートカーソルが相手のボードに表示')
+
+  // 34. presence: 同じドキュメントで編集中バッジ + 非編集側へのリモート反映
+  // Doc 一覧経由だと activeDocId が残っている側でボタンが出ないため、ツリーから開く
+  await page.locator('[data-tree-id]', { hasText: 'スモーク設計メモ' }).first().click()
+  await page.locator('.bn-editor').waitFor()
+  await pageB.locator('[data-tree-id]', { hasText: 'スモーク設計メモ' }).first().click()
+  await pageB.locator('.bn-editor').waitFor()
+  // 本文の段落にカーソルを置いてから追記する
+  await pageB.locator('.bn-editor').getByText('本文のテキストです').first().click()
+  await pageB.keyboard.press('End')
+  await pageB.keyboard.type('リモート編集テスト')
+  await page.getByTestId('doc-editing-badge').waitFor()
+  await page.locator('.bn-editor').getByText('リモート編集テスト').first().waitFor({ timeout: 10000 })
+  ok('presence: 編集中バッジ + リモート更新が非編集側に反映')
+
+  // 35. presence: タブを閉じるとオンライン一覧から即時退室
+  await ctxB.close()
+  await page
+    .locator('[data-testid="presence-avatar"][data-peer-name="スモーク花子"]')
+    .waitFor({ state: 'detached' })
+  ok('presence: 切断でオンライン一覧から退室')
+
+  // 36. access: 拒否 → 参加者に拒否が伝わる
+  const ctxC = await browser.newContext({ ignoreHTTPSErrors: true })
+  const pageC = await ctxC.newPage()
+  pageC.setDefaultTimeout(15000)
+  await pageC.goto(inviteUrl) // 招待リンクは期限内マルチユース
+  await pageC.getByTestId('join-name-input').fill('スモーク次郎')
+  await pageC.getByTestId('join-submit').click()
+  await page.getByTestId('access-request-banner').waitFor()
+  await page.getByTestId('access-deny').click()
+  await pageC.getByTestId('join-denied').waitFor({ timeout: 10000 }) // 結果は2秒ポーリングで届く
+  ok('access: 拒否が参加者に伝わる')
+
+  // 37. access: 未承認クライアントの API はサーバ側で 401 遮断
+  const resp = await ctxC.request.get(`https://${lanIp}:5173/api/workspace`)
+  if (resp.status() === 401) ok('access: 未承認クライアントのAPIは401で遮断')
+  else ng('access: 未承認API遮断', `status=${resp.status()}`)
+  await ctxC.close()
 } catch (e) {
   ng('スモークテスト', e.message?.split('\n')[0])
   await page.screenshot({ path: new URL('./smoke-failure.png', import.meta.url).pathname })

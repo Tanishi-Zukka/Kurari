@@ -10,6 +10,8 @@ import '@blocknote/core/fonts/inter.css'
 import '@blocknote/mantine/style.css'
 import { childrenOf, useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
+import { usePresenceStore } from '@/stores/presence-store'
+import { STROKE_COLORS } from '@/components/board/BoardNodes'
 import { syncHeadingBlocks, type LooseBlock } from '@/lib/doc-sync'
 import { StickyRefBlockSpec, insertStickyRefItem } from './StickyRefBlock'
 import { DocAiToolbar, type DocEditorHandle } from './DocAiToolbar'
@@ -95,7 +97,11 @@ function DocEditor({ docId }: { docId: string }) {
   const docScrollBlockId = useUiStore((s) => s.docScrollBlockId)
   const clearDocScroll = useUiStore((s) => s.clearDocScroll)
 
+  const peers = usePresenceStore((s) => s.peers)
+  const selfClientId = usePresenceStore((s) => s.identity.clientId)
+
   const [title, setTitle] = useState(doc?.name ?? '')
+  const titleRef = useRef<HTMLInputElement>(null)
   const saveTimer = useRef<number | undefined>(undefined)
   const [saveState, setSaveStateRaw] = useState<'saved' | 'saving' | 'dirty'>('saved')
   const saveStateRef = useRef(saveState)
@@ -115,12 +121,19 @@ function DocEditor({ docId }: { docId: string }) {
     initialContent: initialContent as never,
   })
 
+  // 自分が最後に保存/適用した内容。リモート更新（WS の node.updated）との差分判定に使う
+  const contentJsonRef = useRef(JSON.stringify(initialContent ?? []))
+  // リモート反映中の onChange で保存を走らせないためのフラグ
+  const applyingRemoteRef = useRef(false)
+  const editingTimer = useRef<number | undefined>(undefined)
+
   // 保存本体（デバウンスから、またはアンマウント時のフラッシュから呼ばれる）
   const doSave = useCallback(async () => {
     setSaveState('saving')
     const blocks = editor.document as unknown as LooseBlock[]
     try {
       await updateNode(docId, { data: { content: blocks } })
+      contentJsonRef.current = JSON.stringify(blocks)
       await syncHeadingBlocks(docId, blocks)
       setSaveState('saved')
     } catch {
@@ -128,12 +141,55 @@ function DocEditor({ docId }: { docId: string }) {
     }
   }, [editor, docId, updateNode, setSaveState])
 
+  // 「編集中」をプレゼンスに知らせる（3秒アイドルで解除）
+  const markEditing = useCallback(() => {
+    usePresenceStore.getState().setEditingDoc(docId)
+    window.clearTimeout(editingTimer.current)
+    editingTimer.current = window.setTimeout(
+      () => usePresenceStore.getState().setEditingDoc(null),
+      3000,
+    )
+  }, [docId])
+
   // デバウンス保存＋見出しツリー同期
   const scheduleSave = useCallback(() => {
+    if (applyingRemoteRef.current) return // リモート反映による onChange は保存しない（無限ループ防止）
     setSaveState('dirty')
+    markEditing()
     window.clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(() => void doSave(), 800)
-  }, [doSave, setSaveState])
+  }, [doSave, setSaveState, markEditing])
+
+  // 他クライアントの保存をエディタへ反映する。自分が編集中（フォーカス中 or 未保存あり）は
+  // 上書きしない = ローカルカーソルが飛ばない。次の blur かリモート更新で再試行される
+  const maybeApplyRemote = useCallback(() => {
+    const current = useEntityStore.getState().nodes[docId]
+    const content = (current?.data.content as LooseBlock[] | undefined) ?? []
+    if (content.length === 0) return
+    const incoming = JSON.stringify(content)
+    if (incoming === contentJsonRef.current) return // 自分の保存の跳ね返り・適用済み
+    if (editor.isFocused() || saveStateRef.current !== 'saved') return
+    applyingRemoteRef.current = true
+    try {
+      editor.replaceBlocks(editor.document, content as never)
+      contentJsonRef.current = incoming
+    } finally {
+      applyingRemoteRef.current = false
+    }
+  }, [docId, editor])
+
+  useEffect(() => {
+    maybeApplyRemote()
+  }, [doc?.data.content, maybeApplyRemote])
+
+  // アンマウント時に「編集中」を解除
+  useEffect(
+    () => () => {
+      window.clearTimeout(editingTimer.current)
+      usePresenceStore.getState().setEditingDoc(null)
+    },
+    [],
+  )
 
   // アンマウント時: 保留中の変更を破棄せず即時フラッシュ（SPA内のドキュメント切替用）
   useEffect(
@@ -143,6 +199,25 @@ function DocEditor({ docId }: { docId: string }) {
     },
     [doSave],
   )
+
+  // 同じドキュメントを編集中の他メンバー（clientId で重複排除）
+  const editingPeers = useMemo(() => {
+    const seen = new Set<string>()
+    return Object.values(peers).filter((p) => {
+      if (p.clientId === selfClientId || seen.has(p.clientId)) return false
+      if (!(p.location.mode === 'doc' && p.location.docId === docId && p.location.editing)) {
+        return false
+      }
+      seen.add(p.clientId)
+      return true
+    })
+  }, [peers, selfClientId, docId])
+
+  // 他クライアントのタイトル変更を反映（自分が入力中は触らない）
+  useEffect(() => {
+    if (document.activeElement === titleRef.current) return
+    setTitle(doc?.name ?? '')
+  }, [doc?.name])
 
   // ツリーの見出しクリック → 該当ブロックへスクロール
   useEffect(() => {
@@ -170,11 +245,22 @@ function DocEditor({ docId }: { docId: string }) {
           </button>
           <span>/</span>
           <span>{doc.name}</span>
+          {editingPeers.map((p) => (
+            <span
+              key={p.clientId}
+              data-testid="doc-editing-badge"
+              className="rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
+              style={{ backgroundColor: STROKE_COLORS[p.color] ?? STROKE_COLORS.gray }}
+            >
+              ✏ {p.name}さんが編集中
+            </span>
+          ))}
           <span className="ml-auto">
             {saveState === 'saved' ? '保存済み' : saveState === 'saving' ? '保存中…' : '未保存の変更'}
           </span>
         </div>
         <input
+          ref={titleRef}
           className="w-full bg-transparent text-3xl font-bold text-neutral-900 outline-none placeholder:text-neutral-300"
           placeholder="無題のドキュメント"
           value={title}
@@ -192,7 +278,15 @@ function DocEditor({ docId }: { docId: string }) {
           />
         </div>
       </div>
-      <div className="mx-auto w-full max-w-3xl flex-1 px-4 pb-16">
+      <div
+        className="mx-auto w-full max-w-3xl flex-1 px-4 pb-16"
+        onBlur={() => {
+          // 編集終了扱いにして、フォーカス中に保留していたリモート更新を適用する
+          window.clearTimeout(editingTimer.current)
+          usePresenceStore.getState().setEditingDoc(null)
+          maybeApplyRemote()
+        }}
+      >
         <BlockNoteView editor={editor} theme="light" onChange={scheduleSave} slashMenu={false}>
           <SuggestionMenuController
             triggerCharacter="/"

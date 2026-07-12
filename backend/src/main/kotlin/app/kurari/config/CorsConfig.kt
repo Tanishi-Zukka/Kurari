@@ -8,7 +8,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 class CorsConfig : WebMvcConfigurer {
     override fun addCorsMappings(registry: CorsRegistry) {
         registry.addMapping("/api/**")
-            .allowedOriginPatterns("http://localhost:*")
+            // dev サーバの HTTPS 化後は Origin が https になる。LAN からは https://<IP>:5173
+            .allowedOriginPatterns("http://localhost:*", "https://localhost:*", "https://*:5173")
             .allowedMethods("GET", "POST", "PATCH", "DELETE", "OPTIONS")
             .allowedHeaders("*")
     }

@@ -29,6 +29,18 @@ kurari:
     job-timeout-seconds: 120
   uploads:
     dir: ./data/uploads
+  presence:
+    # プレゼンスの update がこの秒数途絶えたセッションを退室扱いにする
+    offline-after-seconds: 90
+  access:
+    # 招待トークンの有効期限（最新1本のみ有効。再発行で失効）
+    invite-ttl-seconds: 3600
+    # 未処理の参加リクエストを破棄するまでの秒数
+    pending-ttl-seconds: 900
+    # 承認/拒否済みリクエストを保持する秒数（参加者のポーリングが結果を読む猶予）
+    resolved-ttl-seconds: 600
+    # 承認待ちの同時上限（超過は 429）
+    max-pending: 20
 
 springdoc:
   api-docs:

@@ -3,7 +3,9 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { useAiJobStore } from '@/stores/ai-job-store'
+import { usePresenceStore } from '@/stores/presence-store'
 import { connectWs } from '@/lib/ws'
+import { usePresenceLocation } from '@/lib/use-presence-location'
 import { api } from '@/lib/api'
 import { Header } from '@/components/layout/Header'
 import { StatusBar } from '@/components/layout/StatusBar'
@@ -13,8 +15,45 @@ import { BoardMode } from '@/components/board/BoardMode'
 import { DocumentMode } from '@/components/doc/DocumentMode'
 import { CallPlaceholder } from '@/components/modes/Placeholders'
 import { AiMode } from '@/components/modes/AiMode'
+import { PresenceNameDialog } from '@/components/layout/PresenceNameDialog'
+import { JoinRequestScreen } from '@/components/access/JoinRequestScreen'
+import { AccessRequestBanner } from '@/components/access/AccessRequestBanner'
+import { useAccessStore } from '@/stores/access-store'
+import { onUnauthorized } from '@/lib/access-token'
 
+/** 自分の居場所をプレゼンス送信するだけのコンポーネント（Router 配下に置く必要がある） */
+function PresenceReporter() {
+  usePresenceLocation()
+  return null
+}
+
+/**
+ * アクセスゲート: オーナー（localhost）と承認済みメンバーだけアプリ本体を描画する。
+ * ゲスト（LAN の未承認クライアント）は参加リクエスト画面のみ。
+ */
 export default function App() {
+  const role = useAccessStore((s) => s.role)
+  const refreshMe = useAccessStore((s) => s.refreshMe)
+
+  useEffect(() => {
+    // backend 再起動などでトークンが失効したら（401）ゲートへ落とす
+    onUnauthorized(() => useAccessStore.getState().signOutToGuest())
+    void refreshMe()
+  }, [refreshMe])
+
+  if (role === 'loading') {
+    return (
+      <div className="flex h-screen items-center justify-center text-sm text-neutral-400">
+        読み込み中…
+      </div>
+    )
+  }
+  if (role === 'guest') return <JoinRequestScreen />
+  return <AuthorizedApp />
+}
+
+function AuthorizedApp() {
+  const role = useAccessStore((s) => s.role)
   const load = useEntityStore((s) => s.load)
   const applyServerEvent = useEntityStore((s) => s.applyServerEvent)
   const loaded = useEntityStore((s) => s.loaded)
@@ -29,13 +68,27 @@ export default function App() {
     void load()
   }, [load])
 
-  // WS 接続
+  // WS 接続（受信ディスパッチ + プレゼンスの join/keepalive）
   useEffect(() => {
-    const disconnect = connectWs((ev) => {
-      if (ev.type.startsWith('node.') || ev.type.startsWith('edge.')) applyServerEvent(ev)
-      else if (ev.type === 'ai_job.updated') useAiJobStore.getState().upsert(ev.payload)
-    }, setWsState)
-    return disconnect
+    const conn = connectWs(
+      (ev) => {
+        if (ev.type.startsWith('node.') || ev.type.startsWith('edge.')) applyServerEvent(ev)
+        else if (ev.type === 'ai_job.updated') useAiJobStore.getState().upsert(ev.payload)
+        else if (ev.type.startsWith('presence.')) usePresenceStore.getState().applyPresenceEvent(ev)
+        else if (ev.type.startsWith('access.')) useAccessStore.getState().applyAccessEvent(ev)
+      },
+      (state) => {
+        setWsState(state)
+        // 再接続のたびに join し直す（サーバ側は新セッションとして登録される）
+        if (state === 'open') usePresenceStore.getState().sendJoin()
+      },
+    )
+    usePresenceStore.getState().bindSender(conn.send)
+    const keepalive = window.setInterval(() => usePresenceStore.getState().sendKeepalive(), 30000)
+    return () => {
+      window.clearInterval(keepalive)
+      conn.close()
+    }
   }, [applyServerEvent, setWsState])
 
   // AI status ポーリング
@@ -62,6 +115,9 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-white text-neutral-900">
+      <PresenceReporter />
+      <PresenceNameDialog />
+      {role === 'owner' && <AccessRequestBanner />}
       <Header />
       <div className="flex min-h-0 flex-1">
         <TreeView />

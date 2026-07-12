@@ -17,6 +17,8 @@ interface UiState {
   aiRunner: string | null
   /** ツリー側から選択したとき、ボードにパンを要求するためのフラグ */
   panRequestId: string | null
+  /** flow 座標を直接指定したパン要求（プレゼンスの「相手の場所へジャンプ」用） */
+  panPointRequest: { x: number; y: number } | null
   /** ツリーの見出しクリックでエディタ内ブロックへのスクロールを要求（BlockNoteのblock id） */
   docScrollBlockId: string | null
   /** 接続ハンドルを常時表示するか（トグル可能。既定は選択/ホバー時のみ表示） */
@@ -32,6 +34,8 @@ interface UiState {
   setAiStatus: (s: AiStatus | null) => void
   setAiRunner: (id: string) => void
   clearPanRequest: () => void
+  requestPanPoint: (p: { x: number; y: number }) => void
+  clearPanPointRequest: () => void
   requestDocScroll: (blockId: string) => void
   clearDocScroll: () => void
   toggleShowHandles: () => void
@@ -48,6 +52,7 @@ export const useUiStore = create<UiState>((set) => ({
   aiStatus: null,
   aiRunner: localStorage.getItem('kurari.aiRunner'),
   panRequestId: null,
+  panPointRequest: null,
   docScrollBlockId: null,
   showHandles: false,
 
@@ -67,5 +72,7 @@ export const useUiStore = create<UiState>((set) => ({
     set({ aiRunner: id })
   },
   clearPanRequest: () => set({ panRequestId: null }),
+  requestPanPoint: (p) => set({ panPointRequest: p }),
+  clearPanPointRequest: () => set({ panPointRequest: null }),
   toggleShowHandles: () => set((s) => ({ showHandles: !s.showHandles })),
 }))
