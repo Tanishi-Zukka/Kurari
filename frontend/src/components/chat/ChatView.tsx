@@ -3,9 +3,11 @@ import { createAiJob } from '@/lib/ai-run'
 import { childrenOf, useEntityStore } from '@/stores/entity-store'
 import { useAiJobStore } from '@/stores/ai-job-store'
 import { useUiStore } from '@/stores/ui-store'
+import { deriveNodes, deriveSticky, type DeriveKind } from '@/lib/derive'
+import { useNavigateToNode } from '@/lib/navigate-node'
 import { Badge, Button, Spinner, Textarea } from '@/components/ui/primitives'
 import { cn } from '@/lib/utils'
-import { SendHorizonal, Sparkles } from 'lucide-react'
+import { CheckCheck, HelpCircle, ListTodo, SendHorizonal, Sparkles, StickyNote } from 'lucide-react'
 import type { KNode } from '@/types/model'
 
 /**
@@ -28,7 +30,12 @@ export function ChatView({
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [deriving, setDeriving] = useState<string | null>(null)
+  const [flashId, setFlashId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const activeBoardId = useUiStore((s) => s.activeBoardId)
+  const selectedIds = useUiStore((s) => s.selectedIds)
+  const navigateToNode = useNavigateToNode()
 
   const target = nodes[contextTargetId]
   const isProject = target?.type === 'project'
@@ -61,11 +68,55 @@ export function ChatView({
     return latest
   }, [roomJobs, messages])
 
-  // 新着で最下部へ
+  // この部屋のメッセージが（ツリー・派生元ジャンプ経由で）選択されたらスクロール＋ハイライト
+  const selectedMsgId = useMemo(
+    () =>
+      selectedIds.length === 1 && messages.some((m) => m.id === selectedIds[0])
+        ? selectedIds[0]
+        : null,
+    [selectedIds, messages],
+  )
   useEffect(() => {
+    if (!selectedMsgId) return
+    const el = scrollRef.current?.querySelector(`[data-node-id="${selectedMsgId}"]`)
+    el?.scrollIntoView({ block: 'center' })
+    setFlashId(selectedMsgId)
+    const t = window.setTimeout(() => setFlashId(null), 1600)
+    return () => window.clearTimeout(t)
+  }, [selectedMsgId])
+
+  // 新着で最下部へ（選択メッセージの表示要求があるときはスキップ）
+  useEffect(() => {
+    if (selectedMsgId) return
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages.length, thinking])
+  }, [messages.length, thinking, selectedMsgId])
+
+  /** メッセージからの派生（タスク化 / 意思決定ログ化 / 未解決記録 / 付箋化） */
+  const deriveMessage = useCallback(
+    async (m: KNode, kind: DeriveKind | 'sticky') => {
+      if (deriving) return
+      setDeriving(m.id)
+      try {
+        if (kind === 'sticky') {
+          const boardId = useUiStore.getState().activeBoardId
+          if (!boardId) return
+          const node = await deriveSticky(m, boardId)
+          navigateToNode(node)
+        } else {
+          const [node] = await deriveNodes([m], kind)
+          if (node) {
+            const ui = useUiStore.getState()
+            ui.setSelected([node.id])
+            ui.setPanelTab('decisions')
+          }
+        }
+      } finally {
+        setDeriving(null)
+      }
+    },
+    [deriving, navigateToNode],
+  )
 
   const ensureRoom = useCallback(async (): Promise<KNode> => {
     if (room) return room
@@ -142,18 +193,66 @@ export function ChatView({
         <div className="flex flex-col gap-2">
           {messages.map((m) => {
             const isAi = m.data.author === 'ai'
+            const actions = (
+              <span
+                className={cn(
+                  'invisible flex shrink-0 items-center gap-0.5 self-center group-hover/msg:visible',
+                  deriving === m.id && 'visible',
+                )}
+              >
+                <button
+                  className="rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-40"
+                  title="タスク化"
+                  data-testid="msg-action-task"
+                  disabled={deriving !== null}
+                  onClick={() => void deriveMessage(m, 'task')}
+                >
+                  <ListTodo size={13} />
+                </button>
+                <button
+                  className="rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-40"
+                  title="意思決定ログ化"
+                  data-testid="msg-action-decision"
+                  disabled={deriving !== null}
+                  onClick={() => void deriveMessage(m, 'decision')}
+                >
+                  <CheckCheck size={13} />
+                </button>
+                <button
+                  className="rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-40"
+                  title="未解決として記録"
+                  data-testid="msg-action-question"
+                  disabled={deriving !== null}
+                  onClick={() => void deriveMessage(m, 'open_question')}
+                >
+                  <HelpCircle size={13} />
+                </button>
+                <button
+                  className="rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-40"
+                  title={activeBoardId ? '付箋化してボードに置く' : 'ボードを開くと付箋化できます'}
+                  data-testid="msg-action-sticky"
+                  disabled={deriving !== null || !activeBoardId}
+                  onClick={() => void deriveMessage(m, 'sticky')}
+                >
+                  <StickyNote size={13} />
+                </button>
+              </span>
+            )
             return (
               <div
                 key={m.id}
-                className={cn('flex', isAi ? 'justify-start' : 'justify-end')}
+                className={cn('group/msg flex gap-1', isAi ? 'justify-start' : 'justify-end')}
                 data-testid={isAi ? 'chat-msg-ai' : 'chat-msg-user'}
+                data-node-id={m.id}
               >
+                {!isAi && actions}
                 <div
                   className={cn(
                     'max-w-[85%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-[13px] leading-relaxed',
                     isAi
                       ? 'bg-neutral-100 text-neutral-800'
                       : 'bg-neutral-800 text-white',
+                    flashId === m.id && 'ring-2 ring-amber-400',
                   )}
                 >
                   {isAi && (
@@ -163,6 +262,7 @@ export function ChatView({
                   )}
                   {typeof m.data.text === 'string' ? m.data.text : ''}
                 </div>
+                {isAi && actions}
               </div>
             )
           })}

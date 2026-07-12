@@ -1,29 +1,16 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
-import { useHistoryStore } from '@/stores/history-store'
 import { useAiJob } from '@/lib/use-ai-job'
 import { saveAiOutput } from '@/lib/ai-outputs'
 import { parseAiJson, fallbackLines } from '@/lib/ai-json'
 import { bboxOf, gridBelowBoard } from '@/lib/board-layout'
+import { pushCreatedHistory } from '@/lib/history-utils'
 import { stickyNameFrom } from '@/components/board/BoardNodes'
 import { Button, Badge, Spinner, Textarea, Input } from '@/components/ui/primitives'
 import { RunnerSelect } from '@/components/ui/RunnerSelect'
 import { BOARD_ITEM_TYPES, type KNode } from '@/types/model'
 import { Sparkles, Save, StickyNote, Lightbulb } from 'lucide-react'
-
-/** AIが作った付箋群を1回のundoで消せるように history に積む */
-function pushCreatedHistory(created: KNode[]) {
-  const { removeNode, restoreNode } = useEntityStore.getState()
-  useHistoryStore.getState().push({
-    undo: async () => {
-      for (const n of created) await removeNode(n.id)
-    },
-    redo: async () => {
-      for (const n of created) await restoreNode(n)
-    },
-  })
-}
 
 export function AiTab() {
   const activeBoardId = useUiStore((s) => s.activeBoardId)

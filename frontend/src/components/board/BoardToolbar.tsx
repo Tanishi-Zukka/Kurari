@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/primitives'
 import { cn } from '@/lib/utils'
 import { useReactFlow } from '@xyflow/react'
@@ -14,10 +15,17 @@ import {
   Trash2,
   Undo2,
   Redo2,
+  ListTodo,
+  CheckCheck,
 } from 'lucide-react'
 import { useHistoryStore } from '@/stores/history-store'
+import { useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
+import { deriveNodes, type DeriveKind } from '@/lib/derive'
 import type { StickyColor } from '@/types/model'
+
+/** 派生（タスク化・意思決定ログ化）の対象になるボード要素種別 */
+const DERIVABLE_TYPES = ['sticky', 'text_card', 'shape'] as const
 
 export type NewItemKind = 'sticky' | 'text_card' | 'rect' | 'ellipse' | 'section'
 export type BoardTool = 'select' | 'pen'
@@ -65,8 +73,30 @@ export function BoardToolbar({
   const redo = useHistoryStore((s) => s.redo)
   const showHandles = useUiStore((s) => s.showHandles)
   const toggleShowHandles = useUiStore((s) => s.toggleShowHandles)
+  const nodes = useEntityStore((s) => s.nodes)
+  const [derivingKind, setDerivingKind] = useState<DeriveKind | null>(null)
 
   const hasSelection = selectedIds.length > 0
+
+  // 選択中の派生対象（付箋・テキストカード・図形）。複数選択は1枚=1ノードで一括派生
+  const derivable = selectedIds
+    .map((id) => nodes[id])
+    .filter((n) => n && (DERIVABLE_TYPES as readonly string[]).includes(n.type))
+
+  const handleDerive = async (kind: DeriveKind) => {
+    if (derivingKind || derivable.length === 0) return
+    setDerivingKind(kind)
+    try {
+      const created = await deriveNodes(derivable, kind)
+      if (created.length > 0) {
+        const ui = useUiStore.getState()
+        ui.setSelected(created.map((n) => n.id))
+        ui.setPanelTab('decisions')
+      }
+    } finally {
+      setDerivingKind(null)
+    }
+  }
 
   const handleDelete = () => {
     const nodes = getNodes().filter((n) => n.selected)
@@ -183,6 +213,31 @@ export function BoardToolbar({
           50%
         </button>
       </div>
+      {derivable.length > 0 && (
+        <>
+          <div className="mx-1 h-5 w-px bg-neutral-200" />
+          <Button
+            size="icon"
+            variant="ghost"
+            disabled={derivingKind !== null}
+            onClick={() => void handleDerive('task')}
+            title={`選択${derivable.length}件をタスク化`}
+            data-testid="board-derive-task"
+          >
+            <ListTodo size={15} />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            disabled={derivingKind !== null}
+            onClick={() => void handleDerive('decision')}
+            title={`選択${derivable.length}件を意思決定ログ化`}
+            data-testid="board-derive-decision"
+          >
+            <CheckCheck size={15} />
+          </Button>
+        </>
+      )}
       <div className="mx-1 h-5 w-px bg-neutral-200" />
       <Button size="icon" variant="ghost" onClick={handleDelete} disabled={!hasSelection} title="削除">
         <Trash2 size={15} />

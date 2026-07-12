@@ -137,6 +137,34 @@ export interface CommentData {
   author: string
 }
 
+/**
+ * 派生操作の共通規約: メッセージ・付箋から「タスク化 / 意思決定ログ化 / 付箋化」で
+ * 作られたノードは data.derivedFrom に元ノードの id を持ち、出所へジャンプできる。
+ * 元ノードは変換せずに残す（type の書き換えはしない）。
+ */
+export interface TaskData {
+  text: string
+  done: boolean
+  derivedFrom?: string
+}
+
+/** decision / open_question 共用（既存の { text } と後方互換） */
+export interface DecisionData {
+  text: string
+  derivedFrom?: string
+}
+
+export function taskData(node: KNode): TaskData {
+  const d = node.data as Partial<TaskData>
+  return { text: d.text ?? '', done: d.done ?? false, derivedFrom: d.derivedFrom }
+}
+
+/** 派生元参照。どの type のノードでも読める */
+export function derivedFromOf(node: KNode): string | null {
+  const v = (node.data as { derivedFrom?: unknown }).derivedFrom
+  return typeof v === 'string' ? v : null
+}
+
 export interface AiSummaryData {
   text: string
   provider: string

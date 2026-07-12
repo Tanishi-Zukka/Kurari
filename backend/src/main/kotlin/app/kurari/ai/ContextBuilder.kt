@@ -186,10 +186,13 @@ class ContextBuilder(
         val project = repo.findById(projectId).orElseThrow {
             ResponseStatusException(HttpStatus.NOT_FOUND, "project not found: $projectId")
         }
-        // project 配下の全子孫から board / document / chat_room を集める
+        // project 配下の全子孫から board / document / chat_room と決定事項・タスクを集める
         val boards = mutableListOf<NodeEntity>()
         val documents = mutableListOf<NodeEntity>()
         val chatRooms = mutableListOf<NodeEntity>()
+        val decisions = mutableListOf<NodeEntity>()
+        val openQuestions = mutableListOf<NodeEntity>()
+        val tasks = mutableListOf<NodeEntity>()
         fun collect(parentId: UUID) {
             for (n in repo.findByParentIdAndDeletedAtIsNull(parentId)) {
                 when (n.type) {
@@ -197,6 +200,9 @@ class ContextBuilder(
                     NodeType.document -> documents.add(n)
                     NodeType.chat_room -> chatRooms.add(n)
                     NodeType.group, NodeType.section -> collect(n.id)
+                    NodeType.decision -> decisions.add(n)
+                    NodeType.open_question -> openQuestions.add(n)
+                    NodeType.task -> tasks.add(n)
                     else -> {}
                 }
             }
@@ -205,6 +211,19 @@ class ContextBuilder(
 
         val sb = StringBuilder()
         sb.appendLine("# Project: ${project.name}")
+        // 決定事項・タスクはAIが最初に読むべき前提情報のため先頭に置く（予算は独自に1200字）
+        if (decisions.isNotEmpty() || openQuestions.isNotEmpty() || tasks.isNotEmpty()) {
+            val dsb = StringBuilder()
+            dsb.appendLine("## 決定事項・タスク（プロジェクトの合意状態）")
+            for (d in decisions.sortedBy { it.createdAt }) dsb.appendLine("- [決定] \"${lineText(d)}\"")
+            for (q in openQuestions.sortedBy { it.createdAt }) dsb.appendLine("- [未解決] \"${lineText(q)}\"")
+            for (t in tasks.sortedBy { it.createdAt }) {
+                val mark = if (t.data["done"] == true) "x" else " "
+                dsb.appendLine("- [$mark] \"${lineText(t)}\"")
+            }
+            sb.appendLine()
+            sb.appendLine(truncate(dsb.toString().trimEnd(), 1200))
+        }
         if (boards.isNotEmpty()) {
             val perBoard = (6000 / boards.size).coerceAtLeast(1000)
             for (b in boards) {
@@ -266,6 +285,10 @@ class ContextBuilder(
             else -> "\"$text\""
         }
     }
+
+    /** decision / open_question / task の1行表示（text が無ければ name） */
+    private fun lineText(item: NodeEntity): String =
+        ((item.data["text"] as? String)?.ifBlank { null } ?: item.name).replace("\n", " / ")
 
     private fun shortText(item: NodeEntity): String =
         ((item.data["text"] as? String)?.replace("\n", " ") ?: "").take(30).ifBlank { item.name }

@@ -1,4 +1,5 @@
-import { childrenOf, useEntityStore } from '@/stores/entity-store'
+import { useEntityStore } from '@/stores/entity-store'
+import { ensureProjectGroup } from '@/lib/node-containers'
 import { selectedRunnerId } from '@/lib/ai-run'
 import type { AiSummaryData, KNode } from '@/types/model'
 
@@ -13,13 +14,8 @@ export async function saveAiOutput(input: {
   sourceNodeId: string
   prompt?: string
 }): Promise<KNode> {
-  const { nodes, createNode } = useEntityStore.getState()
-  let outputs = childrenOf(nodes, input.projectId).find(
-    (n) => n.type === 'group' && n.name === 'AI Outputs',
-  )
-  if (!outputs) {
-    outputs = await createNode({ parentId: input.projectId, type: 'group', name: 'AI Outputs' })
-  }
+  const { createNode } = useEntityStore.getState()
+  const { group: outputs } = await ensureProjectGroup(input.projectId, 'AI Outputs')
   return createNode({
     parentId: outputs.id,
     type: 'ai_summary',

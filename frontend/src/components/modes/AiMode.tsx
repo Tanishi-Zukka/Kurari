@@ -1,8 +1,11 @@
 import { useMemo } from 'react'
-import { childrenOf, useEntityStore } from '@/stores/entity-store'
+import { useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { saveAiOutput } from '@/lib/ai-outputs'
+import { ensureProjectGroup } from '@/lib/node-containers'
+import { pushCreatedHistory } from '@/lib/history-utils'
 import { parseAiJson } from '@/lib/ai-json'
+import type { KNode } from '@/types/model'
 import { AnalysisCard } from './AnalysisCard'
 import { ChatView } from '@/components/chat/ChatView'
 import { Badge } from '@/components/ui/primitives'
@@ -53,19 +56,19 @@ export function AiMode() {
       })
       return
     }
-    const current = useEntityStore.getState().nodes
-    let group = childrenOf(current, project.id).find(
-      (n) => n.type === 'group' && n.name === '意思決定ログ',
-    )
-    if (!group) {
-      group = await createNode({ parentId: project.id, type: 'group', name: '意思決定ログ' })
-    }
+    const { group, created: groupCreated } = await ensureProjectGroup(project.id, '意思決定ログ')
+    const created: KNode[] = []
     for (const d of parsed.decisions ?? []) {
-      await createNode({ parentId: group.id, type: 'decision', name: d.slice(0, 60), data: { text: d } })
+      created.push(
+        await createNode({ parentId: group.id, type: 'decision', name: d.slice(0, 60), data: { text: d } }),
+      )
     }
     for (const q of parsed.openQuestions ?? []) {
-      await createNode({ parentId: group.id, type: 'open_question', name: q.slice(0, 60), data: { text: q } })
+      created.push(
+        await createNode({ parentId: group.id, type: 'open_question', name: q.slice(0, 60), data: { text: q } }),
+      )
     }
+    pushCreatedHistory(groupCreated ? [group, ...created] : created)
   }
 
   return (

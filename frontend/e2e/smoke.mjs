@@ -32,6 +32,7 @@ const FIRST_BOARD = '00000000-0000-0000-0000-000000000003'
     if (
       n.type === 'chat_room' ||
       (n.type === 'group' && n.name === '意思決定ログ') ||
+      (n.type === 'group' && n.name === 'タスク') ||
       (n.type === 'ai_summary' && n.name.includes('プロジェクト説明')) ||
       n.data?.aiGenerated === true ||
       junkNames.includes(n.name) ||
@@ -87,7 +88,8 @@ try {
   const sticky = page.locator('.react-flow__node.selected').first()
   await sticky.dblclick()
   await page.keyboard.type('スモークテスト付箋')
-  await page.locator('.react-flow__pane').click({ position: { x: 40, y: 40 } })
+  // ツールバー（選択時は派生ボタンで幅が広がる）を避けて、その下の空きキャンバスをクリック
+  await page.locator('.react-flow__pane').click({ position: { x: 40, y: 200 } })
   await page.getByText('スモークテスト付箋').first().waitFor()
   ok('付箋のインライン編集')
 
@@ -226,7 +228,8 @@ try {
   await page.getByTestId('place-overlay').click()
   await page.locator('.react-flow__node.selected').first().dblclick()
   await page.keyboard.type('スモークテキスト')
-  await page.locator('.react-flow__pane').click({ position: { x: 40, y: 40 } })
+  // ツールバー（選択時は派生ボタンで幅が広がる）を避けて、その下の空きキャンバスをクリック
+  await page.locator('.react-flow__pane').click({ position: { x: 40, y: 200 } })
   await page.locator('[data-tree-id]', { hasText: 'スモークテキスト' }).first().waitFor()
   await page.getByTitle('楕円を追加').click()
   await page.getByTestId('place-overlay').click()
@@ -327,6 +330,41 @@ try {
   await page.getByRole('button', { name: 'スモーク設計メモ' }).first().click()
   await page.locator('.bn-editor').getByText('要約', { exact: true }).first().waitFor()
   ok('ドキュメントAI要約（文末に挿入 → 永続化）')
+
+  // 27. 派生: チャットメッセージ→タスク化 → Decisionsタブとツリーに出現
+  await page.getByRole('link', { name: /Board/ }).click()
+  await page.getByRole('button', { name: 'Chat' }).click()
+  await page.getByTestId('chat-msg-user').first().hover()
+  await page.getByTestId('msg-action-task').first().click()
+  await page.getByTestId('task-item').first().waitFor()
+  await page.locator('[data-tree-id]', { hasText: /^タスク$/ }).first().waitFor()
+  ok('メッセージ→タスク化（Decisionsタブ・ツリーに出現）')
+
+  // 28. タスクの完了チェック → data.done がAPIに永続化
+  await page.getByTestId('task-toggle').first().check()
+  await page.waitForTimeout(600)
+  const nodesWithTask = await (await fetch(`http://localhost:8080/api/nodes?workspaceId=${WS}`)).json()
+  const task = nodesWithTask.find((n) => n.type === 'task')
+  if (task?.data.done === true) ok('タスク完了チェックがAPIに永続化')
+  else ng('タスク完了チェック', `done=${task?.data.done}`)
+
+  // 29. 派生元へジャンプ: タスク → chatタブが開き元メッセージが見える
+  await page.getByTestId('task-item').first().hover()
+  await page.getByTestId('jump-source').first().click()
+  await page.getByTestId('chat-view').waitFor()
+  await page.getByTestId('chat-msg-user').first().waitFor()
+  ok('派生元へジャンプ（タスク → チャットの元メッセージ）')
+
+  // 30. 派生: 付箋→意思決定ログ化 → undoで取り消し
+  await page.locator('[data-tree-id]', { hasText: 'スモークテスト付箋' }).first().click()
+  await page.getByTestId('board-derive-decision').click()
+  await page.getByTestId('decision-item').first().waitFor()
+  await page.locator('[data-tree-id]', { hasText: '意思決定ログ' }).first().waitFor()
+  await page.getByTitle('元に戻す').click()
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid="decision-item"]').length === 0,
+  )
+  ok('付箋→意思決定ログ化 → undoで一括取り消し')
 } catch (e) {
   ng('スモークテスト', e.message?.split('\n')[0])
   await page.screenshot({ path: new URL('./smoke-failure.png', import.meta.url).pathname })

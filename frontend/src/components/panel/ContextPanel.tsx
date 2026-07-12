@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { CommentsTab } from './CommentsTab'
 import { AiTab } from './AiTab'
 import { ChatTab } from './ChatTab'
+import { DecisionsTab } from './DecisionsTab'
 import { StickyNote, LayoutDashboard, MessageSquare, Sparkles, History, CheckCheck } from 'lucide-react'
 
 const TABS: { id: PanelTab; label: string; icon: typeof MessageSquare; disabled?: boolean }[] = [
@@ -11,7 +12,7 @@ const TABS: { id: PanelTab; label: string; icon: typeof MessageSquare; disabled?
   { id: 'ai', label: 'AI', icon: Sparkles },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'activity', label: 'Activity', icon: History, disabled: true },
-  { id: 'decisions', label: 'Decisions', icon: CheckCheck, disabled: true },
+  { id: 'decisions', label: 'Decisions', icon: CheckCheck },
 ]
 
 export function ContextPanel() {
@@ -71,6 +72,7 @@ export function ContextPanel() {
         {panelTab === 'comments' && <CommentsTab contextNodeId={contextNode?.id ?? null} />}
         {panelTab === 'ai' && <AiTab />}
         {panelTab === 'chat' && <ChatTab />}
+        {panelTab === 'decisions' && <DecisionsTab />}
       </div>
     </aside>
   )
