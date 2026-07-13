@@ -26,7 +26,7 @@ cd frontend && npm run dev
 # 検証
 cd frontend && npx tsc -b          # 型チェック（lint は oxlint）
 cd backend && ./gradlew compileKotlin
-cd frontend && node e2e/smoke.mjs  # E2Eスモーク(37項目)。両サーバ起動が前提。mockなら約3分、実agent接続時はAI待ちが増える
+cd frontend && node e2e/smoke.mjs  # E2Eスモーク(42項目)。両サーバ起動が前提。mockなら約3分、実agent接続時はAI待ちが増える
 ```
 
 - スキーマ変更は Flyway マイグレーション必須（`backend/src/main/resources/db/migration/V*.sql`）。
@@ -56,6 +56,17 @@ cd frontend && node e2e/smoke.mjs  # E2Eスモーク(37項目)。両サーバ起
   `Authorization: Bearer`、WS が `?token=`（`lib/access-token.ts` が保管ハブ）。
   API を新設したら自動的にゲート配下に入る（認可前に呼ばせたい場合のみ
   `AccessInterceptor.isPreAuth` の許可リストへ追加）。
+- **通話（Call Mode）は WebRTC P2P メッシュ**。backend はシグナリング中継のみ
+  （`ws/CallRegistry` メモリ管理、`EventBroadcaster` が `call.join/leave/media/signal` を処理。
+  `call.signal` は宛先 sessionId へ不透過中継）。フロントは `stores/call-store.ts` が
+  RTCPeerConnection を sessionId ごとに管理 — glare は perfect negotiation（polite = sessionId
+  の小さい側）。**シグナル処理はピアごとに直列化 + remoteDescription 確定前の candidate は
+  キュー必須**（並行処理すると candidate が捨てられ ICE が `new` のまま繋がらない）。
+  `iceServers: []`（LAN の host candidate 直結、STUN なし）。WS 再接続 = sessionId が変わる =
+  全 PeerConnection 破棄して `call.join` 再送で張り直し。メディア資産は store のモジュール変数
+  持ちなので `/call` を離れても通話は継続する（CallMode の unmount で cleanup しないこと）。
+  E2E のカメラは fake device フラグ（`--use-fake-device-for-media-stream` — **`-capture` ではない**）
+  + mDNS 匿名化の無効化が必要（smoke.mjs の launch 参照）。
 
 ## AIジョブの約束事
 

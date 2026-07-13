@@ -263,6 +263,13 @@ export interface PresencePeer {
   selectedIds: string[]
 }
 
+/** 通話参加者1人分。名前・色は presence の peers から引く */
+export interface CallParticipant {
+  sessionId: string
+  muted: boolean
+  cameraOff: boolean
+}
+
 export type ServerEvent =
   | { type: 'node.created' | 'node.updated' | 'node.deleted'; payload: KNode }
   | { type: 'edge.created' | 'edge.updated' | 'edge.deleted'; payload: KEdge }
@@ -272,3 +279,13 @@ export type ServerEvent =
   | { type: 'presence.updated'; payload: PresencePeer }
   | { type: 'access.requested'; payload: { requestId: string; name: string; requestedAt: string } }
   | { type: 'access.resolved'; payload: { requestId: string; status: string } }
+  | { type: 'call.joined'; payload: { participants: CallParticipant[] } }
+  | { type: 'call.participants'; payload: CallParticipant[] }
+  | {
+      type: 'call.signal'
+      payload: {
+        from: string
+        description?: RTCSessionDescriptionInit
+        candidate?: RTCIceCandidateInit | null
+      }
+    }

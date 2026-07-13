@@ -4,6 +4,7 @@ import { useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { useAiJobStore } from '@/stores/ai-job-store'
 import { usePresenceStore } from '@/stores/presence-store'
+import { useCallStore } from '@/stores/call-store'
 import { connectWs } from '@/lib/ws'
 import { usePresenceLocation } from '@/lib/use-presence-location'
 import { api } from '@/lib/api'
@@ -13,7 +14,8 @@ import { TreeView } from '@/components/sidebar/TreeView'
 import { ContextPanel } from '@/components/panel/ContextPanel'
 import { BoardMode } from '@/components/board/BoardMode'
 import { DocumentMode } from '@/components/doc/DocumentMode'
-import { CallPlaceholder } from '@/components/modes/Placeholders'
+import { CallMode } from '@/components/call/CallMode'
+import { FloatingCallBar } from '@/components/call/FloatingCallBar'
 import { AiMode } from '@/components/modes/AiMode'
 import { PresenceNameDialog } from '@/components/layout/PresenceNameDialog'
 import { JoinRequestScreen } from '@/components/access/JoinRequestScreen'
@@ -76,14 +78,18 @@ function AuthorizedApp() {
         else if (ev.type === 'ai_job.updated') useAiJobStore.getState().upsert(ev.payload)
         else if (ev.type.startsWith('presence.')) usePresenceStore.getState().applyPresenceEvent(ev)
         else if (ev.type.startsWith('access.')) useAccessStore.getState().applyAccessEvent(ev)
+        else if (ev.type.startsWith('call.')) useCallStore.getState().applyCallEvent(ev)
       },
       (state) => {
         setWsState(state)
         // 再接続のたびに join し直す（サーバ側は新セッションとして登録される）
         if (state === 'open') usePresenceStore.getState().sendJoin()
+        // 通話も同様（presence join の後に。切断時は PeerConnection を畳んで張り直す）
+        useCallStore.getState().handleWsState(state)
       },
     )
     usePresenceStore.getState().bindSender(conn.send)
+    useCallStore.getState().bindSender(conn.send)
     const keepalive = window.setInterval(() => usePresenceStore.getState().sendKeepalive(), 30000)
     return () => {
       window.clearInterval(keepalive)
@@ -127,11 +133,12 @@ function AuthorizedApp() {
             <Route path="/board" element={<BoardMode />} />
             <Route path="/doc" element={<DocumentMode />} />
             <Route path="/ai" element={<AiMode />} />
-            <Route path="/call" element={<CallPlaceholder />} />
+            <Route path="/call" element={<CallMode />} />
           </Routes>
         </main>
         <ContextPanel />
       </div>
+      <FloatingCallBar />
       <StatusBar />
     </div>
   )

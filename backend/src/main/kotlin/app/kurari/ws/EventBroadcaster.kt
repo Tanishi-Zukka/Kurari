@@ -14,26 +14,29 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * /ws に接続した全クライアントへアプリイベントを配信する。
- * 受信はプレゼンス（presence.join / presence.update）のみ扱い、
+ * 受信はプレゼンス（presence.join / presence.update）と通話シグナリング（call.*）のみ扱い、
  * それ以外のデータ変更は従来どおり REST 経由。未知の受信 type は黙殺する。
+ * call.signal の description / candidate は中身を検証せずそのまま宛先へ中継する。
  */
 @Component
 class EventBroadcaster(
     private val objectMapper: ObjectMapper,
     private val presence: PresenceRegistry,
+    private val calls: CallRegistry,
     @Value("\${kurari.presence.offline-after-seconds}") private val presenceTtlSeconds: Long,
 ) : TextWebSocketHandler() {
 
     private val log = LoggerFactory.getLogger(javaClass)
-    private val sessions = ConcurrentHashMap.newKeySet<WebSocketSession>()
+    private val sessions = ConcurrentHashMap<String, WebSocketSession>()
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
-        sessions.add(session)
+        sessions[session.id] = session
     }
 
     override fun afterConnectionClosed(session: WebSocketSession, status: CloseStatus) {
-        sessions.remove(session)
+        sessions.remove(session.id)
         if (presence.leave(session.id)) broadcast("presence.peers", presence.peers())
+        if (calls.leave(session.id)) broadcast("call.participants", calls.participants())
     }
 
     override fun handleTextMessage(session: WebSocketSession, message: TextMessage) {
@@ -72,6 +75,37 @@ class EventBroadcaster(
                 } ?: return
                 broadcast("presence.updated", updated)
             }
+            "call.join" -> {
+                calls.join(
+                    CallParticipant(
+                        sessionId = session.id,
+                        muted = payload["muted"]?.asBoolean() ?: false,
+                        cameraOff = payload["cameraOff"]?.asBoolean() ?: false,
+                    ),
+                )
+                sendTo(session, "call.joined", mapOf("participants" to calls.participants()))
+                broadcast("call.participants", calls.participants())
+            }
+            "call.leave" -> {
+                if (calls.leave(session.id)) broadcast("call.participants", calls.participants())
+            }
+            "call.media" -> {
+                val updated = calls.updateMedia(
+                    session.id,
+                    muted = payload["muted"]?.asBoolean() ?: false,
+                    cameraOff = payload["cameraOff"]?.asBoolean() ?: false,
+                )
+                if (updated) broadcast("call.participants", calls.participants())
+            }
+            "call.signal" -> {
+                // WebRTC の offer/answer/ICE を宛先セッションへそのまま中継（宛先不在は黙殺）
+                val to = payload["to"]?.asText() ?: return
+                val target = sessions[to] ?: return
+                val relayed = mutableMapOf<String, Any?>("from" to session.id)
+                if (payload.has("description")) relayed["description"] = payload["description"]
+                if (payload.has("candidate")) relayed["candidate"] = payload["candidate"]
+                sendTo(target, "call.signal", relayed)
+            }
         }
     }
 
@@ -79,18 +113,22 @@ class EventBroadcaster(
     @Scheduled(fixedDelay = 30_000)
     fun evictStalePresence() {
         if (presence.evictStale(presenceTtlSeconds)) broadcast("presence.peers", presence.peers())
+        // presence から消えたセッションは通話からも退出させる
+        if (calls.retainOnly(presence.peers().map { it.sessionId }.toSet())) {
+            broadcast("call.participants", calls.participants())
+        }
     }
 
     fun broadcast(type: String, payload: Any) {
         val message = TextMessage(objectMapper.writeValueAsString(mapOf("type" to type, "payload" to payload)))
-        sessions.forEach { session ->
+        sessions.forEach { (id, session) ->
             try {
                 synchronized(session) {
                     if (session.isOpen) session.sendMessage(message)
                 }
             } catch (e: Exception) {
                 log.warn("ws send failed, dropping session: {}", e.message)
-                sessions.remove(session)
+                sessions.remove(id)
             }
         }
     }

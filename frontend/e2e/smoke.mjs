@@ -62,7 +62,16 @@ const FIRST_BOARD = '00000000-0000-0000-0000-000000000003'
   for (const e of edges) await fetch(`http://localhost:8080/api/edges/${e.id}`, { method: 'DELETE' })
 }
 
-const browser = await chromium.launch()
+const browser = await chromium.launch({
+  // 通話テスト用: 実カメラなしで getUserMedia を通す（緑のテストパターン映像 + ビープ音）。
+  // mDNS 匿名化はテスト環境では解決できず ICE が繋がらないため無効化する
+  args: [
+    '--use-fake-device-for-media-stream',
+    '--use-fake-ui-for-media-stream',
+    '--autoplay-policy=no-user-gesture-required',
+    '--disable-features=WebRtcHideLocalIpsWithMdns',
+  ],
+})
 // メインページは identity を事前シードして初回の名前入力モーダルをスキップする
 // （既存項目をプレゼンス導入前と同じ手順のまま走らせるため）
 const ctx = await browser.newContext({ ignoreHTTPSErrors: true })
@@ -431,14 +440,59 @@ try {
   await page.locator('.bn-editor').getByText('リモート編集テスト').first().waitFor({ timeout: 10000 })
   ok('presence: 編集中バッジ + リモート更新が非編集側に反映')
 
-  // 35. presence: タブを閉じるとオンライン一覧から即時退室
+  // 35. call: 参加すると自分のカメラ映像タイルが出る（fake device）
+  await page.getByRole('link', { name: /Call/ }).click()
+  await page.getByTestId('call-join').click()
+  await page.waitForFunction(() => {
+    const v = document.querySelector('[data-testid="call-tile-self"] video')
+    return v && v.videoWidth > 0
+  })
+  ok('call: 参加で自分のカメラ映像タイルが表示')
+
+  // 36. call: 2人目の参加で P2P 接続が確立し、リモート映像が相互に届く
+  await pageB.getByRole('link', { name: /Call/ }).click()
+  await pageB.getByTestId('call-join').click()
+  const remoteVideoHasFrames = (name) => {
+    const v = document.querySelector(`[data-testid="call-tile"][data-peer-name="${name}"] video`)
+    return v && v.videoWidth > 0
+  }
+  await page.waitForFunction(remoteVideoHasFrames, 'スモーク花子', { timeout: 20000 })
+  await pageB.waitForFunction(remoteVideoHasFrames, 'スモーク太郎', { timeout: 20000 })
+  ok('call: P2P 接続でリモート映像が相互に表示')
+
+  // 37. call: ミュートが相手のタイルに反映される
+  await page.getByTestId('call-mic').click()
+  await pageB
+    .locator('[data-testid="call-tile"][data-peer-name="スモーク太郎"][data-muted="true"]')
+    .waitFor()
+  ok('call: ミュート状態が相手に反映')
+
+  // 38. call: 他モードへ移っても通話が継続する（フローティングバー）
+  await page.getByRole('link', { name: /Board/ }).click()
+  await page.getByTestId('floating-call-bar').waitFor()
+  // 相手側からは引き続き接続されたまま（タイルが消えない）
+  await pageB.locator('[data-testid="call-tile"][data-peer-name="スモーク太郎"]').waitFor()
+  await page.getByRole('button', { name: '通話に戻る' }).click()
+  await page.getByTestId('call-leave').waitFor()
+  ok('call: 他モードでも通話継続（フローティングバー）')
+
+  // 39. call: 退出で相手のタイルが消え、参加ボタンに戻る
+  await pageB.getByTestId('call-leave').click()
+  await page
+    .locator('[data-testid="call-tile"][data-peer-name="スモーク花子"]')
+    .waitFor({ state: 'detached' })
+  await page.getByTestId('call-leave').click()
+  await page.getByTestId('call-join').waitFor()
+  ok('call: 退出でタイルが消え参加前の画面に戻る')
+
+  // 40. presence: タブを閉じるとオンライン一覧から即時退室
   await ctxB.close()
   await page
     .locator('[data-testid="presence-avatar"][data-peer-name="スモーク花子"]')
     .waitFor({ state: 'detached' })
   ok('presence: 切断でオンライン一覧から退室')
 
-  // 36. access: 拒否 → 参加者に拒否が伝わる
+  // 41. access: 拒否 → 参加者に拒否が伝わる
   const ctxC = await browser.newContext({ ignoreHTTPSErrors: true })
   const pageC = await ctxC.newPage()
   pageC.setDefaultTimeout(15000)
@@ -450,7 +504,7 @@ try {
   await pageC.getByTestId('join-denied').waitFor({ timeout: 10000 }) // 結果は2秒ポーリングで届く
   ok('access: 拒否が参加者に伝わる')
 
-  // 37. access: 未承認クライアントの API はサーバ側で 401 遮断
+  // 42. access: 未承認クライアントの API はサーバ側で 401 遮断
   const resp = await ctxC.request.get(`https://${lanIp}:5173/api/workspace`)
   if (resp.status() === 401) ok('access: 未承認クライアントのAPIは401で遮断')
   else ng('access: 未承認API遮断', `status=${resp.status()}`)
