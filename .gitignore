@@ -42,5 +42,8 @@ frontend/e2e/playwright-report/
 # temp
 temp/
 
+# エージェント間のプラン授受（ローカル専用。公開しない）
+plans/
+
 # Kurari Agent: Apple Intelligence ラッパーのビルド成果物（初回起動時に自動ビルド）
 agent/apple/kurari-apple-ai

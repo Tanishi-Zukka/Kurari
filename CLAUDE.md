@@ -100,6 +100,16 @@ cd frontend && node e2e/smoke.mjs  # E2Eスモーク(42項目)。両サーバ起
 - `EdgeLabelRenderer` の中身はノードレイヤーより下に描画される。クリック可能な UI
   （エッジのツールバーやハンドル）には `zIndex: 1100` と `pointerEvents: 'all'` を付ける。
 
+## 分業ワークフロー（Claude = プラン / Codex = 実装）
+
+- プランは Claude が `plans/NNN-スラッグ.md` に書く（git 管理外。プロトコルの詳細と
+  テンプレートは `plans/README.md` / `plans/_template.md`）。
+- **Codex（実装エージェント）へ**: AGENTS.md（= このファイル）の約束事はすべて適用される。
+  指定されたプランを実装ステップの順に進め、各ステップで検証コマンドを green に保ち、
+  完了時にプラン末尾の「## 実装報告」の記入と status 更新まで完遂すること。コミットはしない。
+- **Claude へ**: 実装レビューは plans/ の実装報告 + `git diff` を起点に行う。
+  プランには必ず「検証」節と「制約・注意」節（このファイルの該当節への参照）を含める。
+
 ## その他の約束事
 
 - コミットに `Co-Authored-By: Claude` を入れない（ユーザー指示）。
