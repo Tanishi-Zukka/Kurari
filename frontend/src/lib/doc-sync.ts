@@ -15,6 +15,27 @@ export interface LooseBlock {
   children?: LooseBlock[]
 }
 
+export interface BlockText {
+  blockId: string
+  text: string
+}
+
+/** BlockNote の全ブロックから、検索用にブロック単位の本文を抽出する。 */
+export function extractAllText(blocks: LooseBlock[]): BlockText[] {
+  const result: BlockText[] = []
+  const walk = (items: LooseBlock[]) => {
+    for (const block of items) {
+      const text = Array.isArray(block.content)
+        ? block.content.map((content: { text?: string }) => content.text ?? '').join('')
+        : ''
+      if (text.trim()) result.push({ blockId: block.id, text: text.trim() })
+      if (block.children?.length) walk(block.children)
+    }
+  }
+  walk(blocks)
+  return result
+}
+
 /** BlockNote のブロック列から見出し(h1-h3)を抽出する */
 export function extractHeadings(blocks: LooseBlock[]): HeadingInfo[] {
   const result: HeadingInfo[] = []

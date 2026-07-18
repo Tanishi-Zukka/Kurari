@@ -26,7 +26,7 @@ cd frontend && npm run dev
 # 検証
 cd frontend && npx tsc -b          # 型チェック（lint は oxlint）
 cd backend && ./gradlew compileKotlin
-cd frontend && node e2e/smoke.mjs  # E2Eスモーク(44項目)。両サーバ起動が前提。mockなら約3分、実agent接続時はAI待ちが増える
+cd frontend && node e2e/smoke.mjs  # E2Eスモーク(46項目)。両サーバ起動が前提。mockなら約3分、実agent接続時はAI待ちが増える
 ```
 
 - スキーマ変更は Flyway マイグレーション必須（`backend/src/main/resources/db/migration/V*.sql`）。
@@ -44,6 +44,8 @@ cd frontend && node e2e/smoke.mjs  # E2Eスモーク(44項目)。両サーバ起
 - 開発シードのワークスペース ID は `00000000-0000-0000-0000-000000000001`、
   First Board は `...0003`。E2E やデバッグスクリプトはこれを直接叩く。
 - 変更は REST（`/api/nodes`, `/api/edges`）＋ WebSocket ブロードキャストで全クライアント同期。
+- 全文検索は全ノードを保持するフロントの `lib/search.ts` がクライアント側で線形走査する。
+  検索結果からの画面遷移は `useNavigateToNode` を再利用する。
 - **presence（オンライン一覧・カーソル・編集中）は DB に持たずメモリ管理**（`ws/PresenceRegistry`）。
   WS `/ws` は双方向で、クライアントが `presence.join` / `presence.update` を送る（他は従来どおり受信専用）。
   ユーザー識別はローカル（localStorage `kurari.identity`、users テーブルなし）。

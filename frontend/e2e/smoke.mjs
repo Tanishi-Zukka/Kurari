@@ -390,13 +390,30 @@ try {
   )
   ok('付箋→意思決定ログ化 → undoで一括取り消し')
 
+  // 31. search: Cmd+K でドキュメント本文を検索し、該当ブロックへ移動
+  await page.keyboard.press('Meta+k')
+  await page.getByTestId('search-input').fill('本文のテキスト')
+  await page.keyboard.press('Enter')
+  await page.locator('.bn-editor').getByText('本文のテキストです').first().waitFor()
+  await page.locator('[data-tree-id]', { hasText: 'スモーク設計メモ' }).first().waitFor()
+  ok('search: Cmd+Kでドキュメント本文を検索してDocへ移動')
+
+  // 32. search: 付箋名を検索し、ボード上の該当ノードを選択
+  await page.getByTestId('search-open').click()
+  await page.getByTestId('search-input').fill('スモークテスト付箋')
+  await page
+    .locator('[data-testid="search-result"][data-node-name="スモークテスト付箋"]')
+    .click()
+  await page.locator('.react-flow__node.selected', { hasText: 'スモークテスト付箋' }).waitFor()
+  ok('search: 付箋を検索してボード上の該当ノードへ移動')
+
   // ---- 以降のマルチクライアント項目は LAN IP が必要（メンバーは LAN 経由でだけゲートを通る） ----
   const lanIp = Object.values(os.networkInterfaces())
     .flat()
     .find((i) => i && i.family === 'IPv4' && !i.internal)?.address
   if (!lanIp) throw new Error('LAN IP が見つからないため access/presence 項目を実行できません')
 
-  // 31. access: オーナーが招待リンクを発行 → LAN の参加者がリクエスト → 承認で入室
+  // 33. access: オーナーが招待リンクを発行 → LAN の参加者がリクエスト → 承認で入室
   await page.getByTitle('LANのメンバーを招待').click()
   const inviteUrl = await page.getByTestId('invite-url').inputValue()
   await page.getByTitle('LANのメンバーを招待').click() // ポップオーバーを閉じる
@@ -417,12 +434,12 @@ try {
   await pageB.getByText('First Board').first().waitFor({ timeout: 10000 }) // 承認後アプリ本体が開く
   ok('access: 招待リンク → 参加リクエスト → 承認で入室')
 
-  // 32. presence: ヘッダーのアバターが相互に見える
+  // 34. presence: ヘッダーのアバターが相互に見える
   await page.locator('[data-testid="presence-avatar"][data-peer-name="スモーク花子"]').waitFor()
   await pageB.locator('[data-testid="presence-avatar"][data-peer-name="スモーク太郎"]').waitFor()
   ok('presence: オンラインメンバーが相互に表示')
 
-  // 33. presence: 相手のボードにリモートカーソルが出る
+  // 35. presence: 相手のボードにリモートカーソルが出る
   await page.getByRole('link', { name: /Board/ }).click()
   await pageB.getByRole('link', { name: /Board/ }).click()
   await pageB.locator('.react-flow__pane').first().waitFor()
@@ -435,7 +452,7 @@ try {
   await remoteCursor.first().waitFor()
   ok('presence: リモートカーソルが相手のボードに表示')
 
-  // 34. presence: 同じドキュメントで編集中バッジ + 非編集側へのリモート反映
+  // 36. presence: 同じドキュメントで編集中バッジ + 非編集側へのリモート反映
   // Doc 一覧経由だと activeDocId が残っている側でボタンが出ないため、ツリーから開く
   await page.locator('[data-tree-id]', { hasText: 'スモーク設計メモ' }).first().click()
   await page.locator('.bn-editor').waitFor()
@@ -460,7 +477,7 @@ try {
   await pageB.goto(BASE)
   await pageB.getByText('First Board').first().waitFor()
 
-  // 35. call: 参加すると自分のカメラ映像タイルが出る（fake device）
+  // 37. call: 参加すると自分のカメラ映像タイルが出る（fake device）
   await page.getByRole('link', { name: /Call/ }).click()
   await page.getByTestId('call-join').click()
   await page.waitForFunction(() => {
@@ -469,7 +486,7 @@ try {
   })
   ok('call: 参加で自分のカメラ映像タイルが表示')
 
-  // 36. call: 2人目の参加で P2P 接続が確立し、リモート映像が相互に届く
+  // 38. call: 2人目の参加で P2P 接続が確立し、リモート映像が相互に届く
   await pageB.getByRole('link', { name: /Call/ }).click()
   await pageB.getByTestId('call-join').click()
   const remoteVideoHasFrames = (name) => {
@@ -480,14 +497,14 @@ try {
   await pageB.waitForFunction(remoteVideoHasFrames, 'スモーク太郎', { timeout: 20000 })
   ok('call: P2P 接続でリモート映像が相互に表示')
 
-  // 37. call: ミュートが相手のタイルに反映される
+  // 39. call: ミュートが相手のタイルに反映される
   await page.getByTestId('call-mic').click()
   await pageB
     .locator('[data-testid="call-tile"][data-peer-name="スモーク太郎"][data-muted="true"]')
     .waitFor()
   ok('call: ミュート状態が相手に反映')
 
-  // 38. call: 画面共有の開始・停止が相手の画面タイルに反映される
+  // 40. call: 画面共有の開始・停止が相手の画面タイルに反映される
   await page.getByTestId('call-screen').click()
   await pageB.waitForFunction(() => {
     const v = document.querySelector(
@@ -501,7 +518,7 @@ try {
     .waitFor({ state: 'detached' })
   ok('call: 画面共有の開始・停止が相手に反映')
 
-  // 39. call: 他モードへ移っても通話が継続する（フローティングバー）
+  // 41. call: 他モードへ移っても通話が継続する（フローティングバー）
   await page.getByRole('link', { name: /Board/ }).click()
   await page.getByTestId('floating-call-bar').waitFor()
   // 相手側からは引き続き接続されたまま（タイルが消えない）
@@ -510,7 +527,7 @@ try {
   await page.getByTestId('call-leave').waitFor()
   ok('call: 他モードでも通話継続（フローティングバー）')
 
-  // 40. call: 退出で相手のタイルが消え、参加ボタンに戻る
+  // 42. call: 退出で相手のタイルが消え、参加ボタンに戻る
   await pageB.getByTestId('call-leave').click()
   await page
     .locator('[data-testid="call-tile"][data-peer-name="スモーク花子"]')
@@ -519,7 +536,7 @@ try {
   await page.getByTestId('call-join').waitFor()
   ok('call: 退出でタイルが消え参加前の画面に戻る')
 
-  // 41. call: 文字起こし蓄積 → 最後の退出でAI議事録ドキュメントを自動生成
+  // 43. call: 文字起こし蓄積 → 最後の退出でAI議事録ドキュメントを自動生成
   await page.evaluate(() => new Promise((resolve, reject) => {
     const ws = new WebSocket(`wss://${location.host}/ws`)
     const timeout = window.setTimeout(() => reject(new Error('議事録テスト用WSがタイムアウト')), 10000)
@@ -560,14 +577,14 @@ try {
   await page.locator('.bn-editor').waitFor()
   ok('call: 最後の退出でAI議事録を生成しDocモードで表示')
 
-  // 42. presence: タブを閉じるとオンライン一覧から即時退室
+  // 44. presence: タブを閉じるとオンライン一覧から即時退室
   await ctxB.close()
   await page
     .locator('[data-testid="presence-avatar"][data-peer-name="スモーク花子"]')
     .waitFor({ state: 'detached' })
   ok('presence: 切断でオンライン一覧から退室')
 
-  // 43. access: 拒否 → 参加者に拒否が伝わる
+  // 45. access: 拒否 → 参加者に拒否が伝わる
   const ctxC = await browser.newContext({ ignoreHTTPSErrors: true })
   const pageC = await ctxC.newPage()
   pageC.setDefaultTimeout(15000)
@@ -579,7 +596,7 @@ try {
   await pageC.getByTestId('join-denied').waitFor({ timeout: 10000 }) // 結果は2秒ポーリングで届く
   ok('access: 拒否が参加者に伝わる')
 
-  // 44. access: 未承認クライアントの API はサーバ側で 401 遮断
+  // 46. access: 未承認クライアントの API はサーバ側で 401 遮断
   const resp = await ctxC.request.get(`https://${lanIp}:5173/api/workspace`)
   if (resp.status() === 401) ok('access: 未承認クライアントのAPIは401で遮断')
   else ng('access: 未承認API遮断', `status=${resp.status()}`)

@@ -21,6 +21,7 @@ import { useHistoryStore } from '@/stores/history-store'
 import { usePresenceStore } from '@/stores/presence-store'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { isEditableTarget } from '@/lib/keyboard'
 import {
   StickyNode,
   TextCardNode,
@@ -143,11 +144,6 @@ async function readImageSize(file: File): Promise<{ w: number; h: number } | nul
   } finally {
     URL.revokeObjectURL(url)
   }
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 }
 
 function BoardCanvas() {

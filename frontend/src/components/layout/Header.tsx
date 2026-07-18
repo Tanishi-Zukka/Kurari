@@ -5,13 +5,14 @@ import { PresenceAvatars } from './PresenceAvatars'
 import { InviteButton } from '@/components/access/InviteButton'
 import { useAccessStore } from '@/stores/access-store'
 import { Button } from '@/components/ui/primitives'
-import { PanelLeft, PanelRight } from 'lucide-react'
+import { PanelLeft, PanelRight, Search } from 'lucide-react'
 
 export function Header() {
   const workspaceId = useEntityStore((s) => s.workspaceId)
   const workspaceName = useEntityStore((s) => (workspaceId ? s.nodes[workspaceId]?.name : null))
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
   const togglePanel = useUiStore((s) => s.togglePanel)
+  const openSearch = useUiStore((s) => s.openSearch)
   const isOwner = useAccessStore((s) => s.role === 'owner')
 
   return (
@@ -24,8 +25,19 @@ export function Header() {
         <span className="text-xs text-neutral-400">/</span>
         <span className="text-sm text-neutral-600">{workspaceName ?? '…'}</span>
       </div>
-      <div className="flex justify-center">
+      <div className="flex items-center justify-center gap-2">
         <ModeToggle />
+        <Button
+          data-testid="search-open"
+          variant="outline"
+          size="sm"
+          onClick={openSearch}
+          title="検索 (⌘K)"
+          className="text-neutral-500"
+        >
+          <Search size={13} />
+          <span className="text-[10px] text-neutral-400">⌘K</span>
+        </Button>
       </div>
       <div className="flex items-center justify-end gap-3">
         <PresenceAvatars />

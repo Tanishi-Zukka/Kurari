@@ -22,6 +22,8 @@ import { JoinRequestScreen } from '@/components/access/JoinRequestScreen'
 import { AccessRequestBanner } from '@/components/access/AccessRequestBanner'
 import { useAccessStore } from '@/stores/access-store'
 import { onUnauthorized } from '@/lib/access-token'
+import { isEditableTarget } from '@/lib/keyboard'
+import { CommandPalette } from '@/components/search/CommandPalette'
 
 /** 自分の居場所をプレゼンス送信するだけのコンポーネント（Router 配下に置く必要がある） */
 function PresenceReporter() {
@@ -64,11 +66,23 @@ function AuthorizedApp() {
   const setAiStatus = useUiStore((s) => s.setAiStatus)
   const activeBoardId = useUiStore((s) => s.activeBoardId)
   const setActiveBoard = useUiStore((s) => s.setActiveBoard)
+  const openSearch = useUiStore((s) => s.openSearch)
 
   // 初期ロード
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLocaleLowerCase() !== 'k') return
+      if (isEditableTarget(event.target)) return
+      event.preventDefault()
+      openSearch()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [openSearch])
 
   // WS 接続（受信ディスパッチ + プレゼンスの join/keepalive）
   useEffect(() => {
@@ -123,6 +137,7 @@ function AuthorizedApp() {
     <div className="flex h-screen flex-col bg-white text-neutral-900">
       <PresenceReporter />
       <PresenceNameDialog />
+      <CommandPalette />
       {role === 'owner' && <AccessRequestBanner />}
       <Header />
       <div className="flex min-h-0 flex-1">
