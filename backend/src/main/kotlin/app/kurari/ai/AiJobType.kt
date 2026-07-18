@@ -59,6 +59,15 @@ enum class AiJobType(val instruction: String, val responseFormat: ResponseFormat
         ResponseFormat.text,
     ),
 
+    call_minutes(
+        """あなたはチームのコンテキスト管理アプリ「Kurari」のAIアシスタントです。
+以下に渡すのは通話の文字起こしです（誤変換を含む場合があります）。
+日本語のMarkdownで議事録ドラフトを作成してください。
+「# 議事録」を先頭に置き、参加者、決定事項、TODO、議論の要点を見出しと箇条書きで整理してください。
+文字起こしにない事実は補わず、Markdown本文のみを返してください。""",
+        ResponseFormat.text,
+    ),
+
     project_brief(
         """あなたはチームのコンテキスト管理アプリ「Kurari」のAIアシスタントです。
 以下に渡すのは、あるプロジェクトのボード・ドキュメント・チャットの内容一式です。

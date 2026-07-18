@@ -10,11 +10,13 @@ interface CallState {
   errorMessage: string | null
   /** sessionId → 参加者（自分の分も含む）。ミュート等のバッジ表示はここから */
   participants: Record<string, CallParticipant>
-  /** sessionId → 受信ストリーム（ontrack で確定） */
-  remoteStreams: Record<string, MediaStream>
+  /** sessionId → streamId → 受信ストリーム（ontrack で確定） */
+  remoteStreams: Record<string, Record<string, MediaStream>>
   localStream: MediaStream | null
+  screenStream: MediaStream | null
   muted: boolean
   cameraOff: boolean
+  transcribing: boolean
 
   bindSender: (send: (msg: object) => void) => void
   /** カメラ・マイクを取得して通話に参加する */
@@ -22,6 +24,8 @@ interface CallState {
   leave: () => void
   toggleMute: () => void
   toggleCamera: () => void
+  startScreenShare: () => Promise<void>
+  stopScreenShare: () => void
   applyCallEvent: (ev: ServerEvent) => void
   /** WS の接続状態変化（App から呼ぶ）。再接続時は新セッションとして全 PeerConnection を張り直す */
   handleWsState: (state: WsState) => void
@@ -42,11 +46,37 @@ interface PeerEntry {
   pendingCandidates: RTCIceCandidateInit[]
 }
 
+/** Web Speech API の最小型（TypeScript の DOM lib に含まれないためローカル定義） */
+interface SpeechRecognitionLike {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  onresult:
+    | ((ev: {
+        resultIndex: number
+        results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>
+      }) => void)
+    | null
+  onend: (() => void) | null
+  onerror: (() => void) | null
+  start(): void
+  stop(): void
+}
+
+function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
+  const w = window as unknown as Record<string, unknown>
+  return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as
+    | (new () => SpeechRecognitionLike)
+    | null
+}
+
 // RTCPeerConnection や送信関数は再レンダー不要なのでモジュール変数に持つ
 let sender: ((msg: object) => void) | null = null
 const peers = new Map<string, PeerEntry>()
 /** 参加の意思。WS 再接続時に call.join を送り直す判定に使う（leave で解除） */
 let wantJoined = false
+let recognition: SpeechRecognitionLike | null = null
+let recognitionRestartTimer: number | undefined
 
 function send(type: string, payload: object) {
   sender?.({ type, payload })
@@ -59,7 +89,68 @@ function mediaErrorMessage(e: unknown): string {
   return 'カメラ・マイクを開始できません'
 }
 
+function screenMediaErrorMessage(e: unknown): string | null {
+  const name = (e as DOMException)?.name
+  if (name === 'NotAllowedError') return null
+  if (name === 'NotFoundError') return '共有できる画面が見つかりません'
+  return '画面共有を開始できません'
+}
+
 export const useCallStore = create<CallState>((set, get) => {
+  const stopTranscription = () => {
+    window.clearTimeout(recognitionRestartTimer)
+    recognitionRestartTimer = undefined
+    const current = recognition
+    recognition = null
+    if (current) {
+      current.onend = null
+      try {
+        current.stop()
+      } catch {
+        // 既に停止済みでも何もしない
+      }
+    }
+    set({ transcribing: false })
+  }
+
+  const startTranscription = () => {
+    const { status, muted } = get()
+    if (recognition || status !== 'joined' || muted || !wantJoined) return
+    const SR = getSpeechRecognition()
+    if (!SR) return
+    const next = new SR()
+    next.lang = 'ja-JP'
+    next.continuous = true
+    next.interimResults = true
+    let failed = false
+    next.onresult = (ev) => {
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const result = ev.results[i]
+        if (!result.isFinal) continue
+        const text = result[0].transcript.trim()
+        if (text) send('call.transcript', { text })
+      }
+    }
+    next.onerror = () => {
+      failed = true
+      set({ transcribing: false })
+    }
+    next.onend = () => {
+      if (recognition === next) recognition = null
+      if (!failed && get().status === 'joined' && !get().muted && wantJoined) {
+        recognitionRestartTimer = window.setTimeout(startTranscription, 250)
+      }
+    }
+    recognition = next
+    try {
+      next.start()
+      set({ transcribing: true })
+    } catch {
+      recognition = null
+      set({ transcribing: false })
+    }
+  }
+
   const closePeer = (sessionId: string) => {
     const entry = peers.get(sessionId)
     if (!entry) return
@@ -101,6 +192,10 @@ export const useCallStore = create<CallState>((set, get) => {
     peers.set(peerId, entry)
 
     for (const track of localStream.getTracks()) pc.addTrack(track, localStream)
+    const screenStream = get().screenStream
+    if (screenStream) {
+      for (const track of screenStream.getTracks()) pc.addTrack(track, screenStream)
+    }
 
     pc.onnegotiationneeded = async () => {
       try {
@@ -119,11 +214,16 @@ export const useCallStore = create<CallState>((set, get) => {
     pc.ontrack = (e) => {
       const stream = e.streams[0]
       if (!stream) return
-      set((s) =>
-        s.remoteStreams[peerId] === stream
-          ? s
-          : { remoteStreams: { ...s.remoteStreams, [peerId]: stream } },
-      )
+      set((s) => {
+        const peerStreams = s.remoteStreams[peerId] ?? {}
+        if (peerStreams[stream.id] === stream) return s
+        return {
+          remoteStreams: {
+            ...s.remoteStreams,
+            [peerId]: { ...peerStreams, [stream.id]: stream },
+          },
+        }
+      })
     }
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed') {
@@ -211,8 +311,10 @@ export const useCallStore = create<CallState>((set, get) => {
     participants: {},
     remoteStreams: {},
     localStream: null,
+    screenStream: null,
     muted: false,
     cameraOff: false,
+    transcribing: false,
 
     bindSender: (fn) => {
       sender = fn
@@ -235,39 +337,90 @@ export const useCallStore = create<CallState>((set, get) => {
       }
       wantJoined = true
       set({ localStream: stream, muted: false, cameraOff: false })
-      send('call.join', { muted: false, cameraOff: false })
+      send('call.join', { muted: false, cameraOff: false, screenStreamId: null })
     },
 
     leave: () => {
       wantJoined = false
+      stopTranscription()
       send('call.leave', {})
       closeAllPeers()
       get().localStream?.getTracks().forEach((t) => t.stop())
+      get().screenStream?.getTracks().forEach((track) => {
+        track.onended = null
+        track.stop()
+      })
       set({
         status: 'idle',
         errorMessage: null,
         participants: {},
         remoteStreams: {},
         localStream: null,
+        screenStream: null,
         muted: false,
         cameraOff: false,
+        transcribing: false,
       })
     },
 
     toggleMute: () => {
-      const { localStream, muted, cameraOff } = get()
+      const { localStream, screenStream, muted, cameraOff } = get()
       const next = !muted
       localStream?.getAudioTracks().forEach((t) => (t.enabled = !next))
       set({ muted: next })
-      send('call.media', { muted: next, cameraOff })
+      if (next) stopTranscription()
+      else startTranscription()
+      send('call.media', { muted: next, cameraOff, screenStreamId: screenStream?.id ?? null })
     },
 
     toggleCamera: () => {
-      const { localStream, muted, cameraOff } = get()
+      const { localStream, screenStream, muted, cameraOff } = get()
       const next = !cameraOff
       localStream?.getVideoTracks().forEach((t) => (t.enabled = !next))
       set({ cameraOff: next })
-      send('call.media', { muted, cameraOff: next })
+      send('call.media', { muted, cameraOff: next, screenStreamId: screenStream?.id ?? null })
+    },
+
+    startScreenShare: async () => {
+      if (get().screenStream) return
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+      } catch (e) {
+        const errorMessage = screenMediaErrorMessage(e)
+        if (errorMessage) set({ errorMessage })
+        return
+      }
+
+      const track = stream.getVideoTracks()[0]
+      if (!track) {
+        stream.getTracks().forEach((t) => t.stop())
+        set({ errorMessage: '共有できる画面が見つかりません' })
+        return
+      }
+
+      set({ screenStream: stream, errorMessage: null })
+      track.onended = () => get().stopScreenShare()
+      for (const { pc } of peers.values()) pc.addTrack(track, stream)
+      const { muted, cameraOff } = get()
+      send('call.media', { muted, cameraOff, screenStreamId: stream.id })
+    },
+
+    stopScreenShare: () => {
+      const { screenStream, muted, cameraOff } = get()
+      if (!screenStream) return
+      const tracks = new Set(screenStream.getTracks())
+      for (const { pc } of peers.values()) {
+        for (const rtcSender of pc.getSenders()) {
+          if (rtcSender.track && tracks.has(rtcSender.track)) pc.removeTrack(rtcSender)
+        }
+      }
+      for (const track of tracks) {
+        track.onended = null
+        track.stop()
+      }
+      set({ screenStream: null })
+      send('call.media', { muted, cameraOff, screenStreamId: null })
     },
 
     applyCallEvent: (ev) => {
@@ -276,6 +429,7 @@ export const useCallStore = create<CallState>((set, get) => {
         set({ status: 'joined' })
         setParticipants(ev.payload.participants)
         syncPeers(ev.payload.participants)
+        startTranscription()
       } else if (ev.type === 'call.participants') {
         setParticipants(ev.payload)
         if (get().localStream) syncPeers(ev.payload)
@@ -289,9 +443,11 @@ export const useCallStore = create<CallState>((set, get) => {
       if (state === 'closed') {
         // 再接続すると sessionId が変わるため、旧接続はすべて破棄して張り直す
         closeAllPeers()
+        stopTranscription()
       } else if (state === 'open') {
-        const { muted, cameraOff } = get()
-        send('call.join', { muted, cameraOff })
+        const { screenStream, muted, cameraOff } = get()
+        send('call.join', { muted, cameraOff, screenStreamId: screenStream?.id ?? null })
+        startTranscription()
       }
     },
   }

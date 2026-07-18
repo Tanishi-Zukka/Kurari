@@ -26,7 +26,7 @@ cd frontend && npm run dev
 # 検証
 cd frontend && npx tsc -b          # 型チェック（lint は oxlint）
 cd backend && ./gradlew compileKotlin
-cd frontend && node e2e/smoke.mjs  # E2Eスモーク(42項目)。両サーバ起動が前提。mockなら約3分、実agent接続時はAI待ちが増える
+cd frontend && node e2e/smoke.mjs  # E2Eスモーク(44項目)。両サーバ起動が前提。mockなら約3分、実agent接続時はAI待ちが増える
 ```
 
 - スキーマ変更は Flyway マイグレーション必須（`backend/src/main/resources/db/migration/V*.sql`）。
@@ -65,20 +65,22 @@ cd frontend && node e2e/smoke.mjs  # E2Eスモーク(42項目)。両サーバ起
   `iceServers: []`（LAN の host candidate 直結、STUN なし）。WS 再接続 = sessionId が変わる =
   全 PeerConnection 破棄して `call.join` 再送で張り直し。メディア資産は store のモジュール変数
   持ちなので `/call` を離れても通話は継続する（CallMode の unmount で cleanup しないこと）。
+  画面共有は `call.media` の `screenStreamId` と、参加者ごとに保持した複数 MediaStream の id を
+  突き合わせてカメラ映像と識別する。
   E2E のカメラは fake device フラグ（`--use-fake-device-for-media-stream` — **`-capture` ではない**）
   + mDNS 匿名化の無効化が必要（smoke.mjs の launch 参照）。
 
 ## AIジョブの約束事
 
-- ジョブ種別は `backend/.../ai/AiJobType.kt` に集約（10種）。**instruction（システムプロンプト）は
+- ジョブ種別は `backend/.../ai/AiJobType.kt` に集約（11種）。**instruction（システムプロンプト）は
   backend がジョブの payload に同梱**し、agent は instruction + context + prompt を結合して
   `copilot` を実行するだけ。**種別を追加しても agent の改修は不要**
   （AiJobType に enum 追加 + `AiJobService.buildContext` の分岐 + `mockResult` の3点だけ）。
 - 構造化出力（brainstorm / detect_conflicts / extract_decisions）はJSONを指示し、
   **パースはフロント**（`lib/ai-json.ts` の `parseAiJson` → 失敗時 `fallbackLines`）。
   mock モードでもJSON系は妥当なJSONを返すので、E2E は mock（agent 停止）で全経路が通る。
-- `chat_reply` だけは backend が complete 時に AI の `message` ノードを作る
-  （`AiJobService.finalizeJob`。ブラウザが閉じていても履歴が欠けない）。
+- `chat_reply` と `call_minutes` は backend が complete 時に、それぞれ AI の `message` ノードと
+  「通話議事録」document ノードを作る（`AiJobService.finalizeJob`。ブラウザが閉じていても成果物が欠けない）。
   チャット履歴は対象ノード直下の `chat_room` / `message` ノード。
 - フロントのジョブ追跡は `lib/use-ai-job.ts`（WS `ai_job.updated` → ai-job-store + ポーリング併用）。
   **前回ジョブの結果を挿入系UIで再利用しないよう、待機はジョブIDと紐づける**（DocAiToolbar 参照）。

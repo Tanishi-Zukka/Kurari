@@ -37,6 +37,7 @@ const FIRST_BOARD = '00000000-0000-0000-0000-000000000003'
       (n.type === 'ai_summary' && n.name.includes('プロジェクト説明')) ||
       n.data?.aiGenerated === true ||
       junkNames.includes(n.name) ||
+      n.name.startsWith('通話議事録') ||
       n.name.startsWith('スモーク')
     ) {
       await fetch(`http://localhost:8080/api/nodes/${n.id}`, { method: 'DELETE' })
@@ -68,6 +69,7 @@ const browser = await chromium.launch({
   args: [
     '--use-fake-device-for-media-stream',
     '--use-fake-ui-for-media-stream',
+    '--auto-select-desktop-capture-source=Entire screen',
     '--autoplay-policy=no-user-gesture-required',
     '--disable-features=WebRtcHideLocalIpsWithMdns',
   ],
@@ -76,6 +78,9 @@ const browser = await chromium.launch({
 // （既存項目をプレゼンス導入前と同じ手順のまま走らせるため）
 const ctx = await browser.newContext({ ignoreHTTPSErrors: true })
 await ctx.addInitScript(() => {
+  // headless の SpeechRecognition は実認識できず fake マイクと競合するため、議事録は後段でWS直叩きする
+  Object.defineProperty(window, 'SpeechRecognition', { value: undefined })
+  Object.defineProperty(window, 'webkitSpeechRecognition', { value: undefined })
   localStorage.setItem(
     'kurari.identity',
     JSON.stringify({ clientId: 'e2e-main-client-0001', name: 'スモーク太郎', color: 'blue' }),
@@ -397,6 +402,10 @@ try {
   await page.getByTitle('LANのメンバーを招待').click() // ポップオーバーを閉じる
   if (!inviteUrl.startsWith('https://')) throw new Error(`招待URLが不正: ${inviteUrl}`)
   const ctxB = await browser.newContext({ ignoreHTTPSErrors: true })
+  await ctxB.addInitScript(() => {
+    Object.defineProperty(window, 'SpeechRecognition', { value: undefined })
+    Object.defineProperty(window, 'webkitSpeechRecognition', { value: undefined })
+  })
   const pageB = await ctxB.newPage()
   pageB.setDefaultTimeout(15000)
   await pageB.goto(inviteUrl)
@@ -440,6 +449,17 @@ try {
   await page.locator('.bn-editor').getByText('リモート編集テスト').first().waitFor({ timeout: 10000 })
   ok('presence: 編集中バッジ + リモート更新が非編集側に反映')
 
+  // 単一ホスト上で LAN IP を自分自身へ向けると macOS が WebRTC のUDP候補収集を止めるため、
+  // access/presence の LAN 検証後は2人目も localhost へ移して通話のP2P経路を検証する
+  await ctxB.addInitScript(() => {
+    localStorage.setItem(
+      'kurari.identity',
+      JSON.stringify({ clientId: 'e2e-remote-client-0002', name: 'スモーク花子', color: 'pink' }),
+    )
+  })
+  await pageB.goto(BASE)
+  await pageB.getByText('First Board').first().waitFor()
+
   // 35. call: 参加すると自分のカメラ映像タイルが出る（fake device）
   await page.getByRole('link', { name: /Call/ }).click()
   await page.getByTestId('call-join').click()
@@ -467,7 +487,21 @@ try {
     .waitFor()
   ok('call: ミュート状態が相手に反映')
 
-  // 38. call: 他モードへ移っても通話が継続する（フローティングバー）
+  // 38. call: 画面共有の開始・停止が相手の画面タイルに反映される
+  await page.getByTestId('call-screen').click()
+  await pageB.waitForFunction(() => {
+    const v = document.querySelector(
+      '[data-testid="call-tile-screen"][data-peer-name="スモーク太郎"] video',
+    )
+    return v && v.videoWidth > 0
+  }, undefined, { timeout: 20000 })
+  await page.getByTestId('call-screen').click()
+  await pageB
+    .locator('[data-testid="call-tile-screen"][data-peer-name="スモーク太郎"]')
+    .waitFor({ state: 'detached' })
+  ok('call: 画面共有の開始・停止が相手に反映')
+
+  // 39. call: 他モードへ移っても通話が継続する（フローティングバー）
   await page.getByRole('link', { name: /Board/ }).click()
   await page.getByTestId('floating-call-bar').waitFor()
   // 相手側からは引き続き接続されたまま（タイルが消えない）
@@ -476,7 +510,7 @@ try {
   await page.getByTestId('call-leave').waitFor()
   ok('call: 他モードでも通話継続（フローティングバー）')
 
-  // 39. call: 退出で相手のタイルが消え、参加ボタンに戻る
+  // 40. call: 退出で相手のタイルが消え、参加ボタンに戻る
   await pageB.getByTestId('call-leave').click()
   await page
     .locator('[data-testid="call-tile"][data-peer-name="スモーク花子"]')
@@ -485,14 +519,55 @@ try {
   await page.getByTestId('call-join').waitFor()
   ok('call: 退出でタイルが消え参加前の画面に戻る')
 
-  // 40. presence: タブを閉じるとオンライン一覧から即時退室
+  // 41. call: 文字起こし蓄積 → 最後の退出でAI議事録ドキュメントを自動生成
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const ws = new WebSocket(`wss://${location.host}/ws`)
+    const timeout = window.setTimeout(() => reject(new Error('議事録テスト用WSがタイムアウト')), 10000)
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        type: 'presence.join',
+        payload: {
+          clientId: 'e2e-call-minutes-client',
+          name: '議事録テスト太郎',
+          color: 'blue',
+          location: { mode: 'call' },
+          selectedIds: [],
+        },
+      }))
+      ws.send(JSON.stringify({
+        type: 'call.join',
+        payload: { muted: false, cameraOff: false, screenStreamId: null },
+      }))
+      const lines = [
+        '本日の会議では通話議事録機能の動作確認を行い、文字起こしの保存方法について詳しく話し合いました。',
+        '決定事項として最後の参加者が退出した時点で議事録を自動生成し、ワークスペース直下へ保存します。',
+        'TODOとして生成されたドキュメントを開き、見出しと箇条書きが正しく表示されることを確認します。',
+      ]
+      for (const text of lines) {
+        ws.send(JSON.stringify({ type: 'call.transcript', payload: { text } }))
+      }
+      window.setTimeout(() => ws.close(), 100)
+    }
+    ws.onerror = () => reject(new Error('議事録テスト用WSに接続できません'))
+    ws.onclose = () => {
+      window.clearTimeout(timeout)
+      resolve()
+    }
+  }))
+  const minutesNode = page.locator('[data-tree-id]', { hasText: '通話議事録' }).first()
+  await minutesNode.waitFor({ timeout: 20000 })
+  await minutesNode.click()
+  await page.locator('.bn-editor').waitFor()
+  ok('call: 最後の退出でAI議事録を生成しDocモードで表示')
+
+  // 42. presence: タブを閉じるとオンライン一覧から即時退室
   await ctxB.close()
   await page
     .locator('[data-testid="presence-avatar"][data-peer-name="スモーク花子"]')
     .waitFor({ state: 'detached' })
   ok('presence: 切断でオンライン一覧から退室')
 
-  // 41. access: 拒否 → 参加者に拒否が伝わる
+  // 43. access: 拒否 → 参加者に拒否が伝わる
   const ctxC = await browser.newContext({ ignoreHTTPSErrors: true })
   const pageC = await ctxC.newPage()
   pageC.setDefaultTimeout(15000)
@@ -504,7 +579,7 @@ try {
   await pageC.getByTestId('join-denied').waitFor({ timeout: 10000 }) // 結果は2秒ポーリングで届く
   ok('access: 拒否が参加者に伝わる')
 
-  // 42. access: 未承認クライアントの API はサーバ側で 401 遮断
+  // 44. access: 未承認クライアントの API はサーバ側で 401 遮断
   const resp = await ctxC.request.get(`https://${lanIp}:5173/api/workspace`)
   if (resp.status() === 401) ok('access: 未承認クライアントのAPIは401で遮断')
   else ng('access: 未承認API遮断', `status=${resp.status()}`)

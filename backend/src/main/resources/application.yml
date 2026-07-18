@@ -32,6 +32,11 @@ kurari:
   presence:
     # プレゼンスの update がこの秒数途絶えたセッションを退室扱いにする
     offline-after-seconds: 90
+  call:
+    # 通話文字起こしをメモリに保持する最大行数
+    transcript-max-lines: 2000
+    # 最後の退出時に議事録を生成する最小文字数
+    minutes-min-chars: 100
   access:
     # 招待トークンの有効期限（最新1本のみ有効。再発行で失効）
     invite-ttl-seconds: 3600

@@ -268,6 +268,7 @@ export interface CallParticipant {
   sessionId: string
   muted: boolean
   cameraOff: boolean
+  screenStreamId: string | null
 }
 
 export type ServerEvent =

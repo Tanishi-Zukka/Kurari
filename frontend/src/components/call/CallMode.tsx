@@ -1,4 +1,5 @@
-import { Mic, MicOff, Phone, PhoneOff, Video, VideoOff } from 'lucide-react'
+import { Fragment } from 'react'
+import { Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Video, VideoOff } from 'lucide-react'
 import type { StickyColor } from '@/types/model'
 import { useCallStore } from '@/stores/call-store'
 import { usePresenceStore } from '@/stores/presence-store'
@@ -61,6 +62,7 @@ function TileGrid() {
   const participants = useCallStore((s) => s.participants)
   const remoteStreams = useCallStore((s) => s.remoteStreams)
   const localStream = useCallStore((s) => s.localStream)
+  const screenStream = useCallStore((s) => s.screenStream)
   const muted = useCallStore((s) => s.muted)
   const cameraOff = useCallStore((s) => s.cameraOff)
   const peers = usePresenceStore((s) => s.peers)
@@ -83,19 +85,44 @@ function TileGrid() {
         muted={muted}
         cameraOff={cameraOff}
       />
-      {others.map((p) => (
-        <CallTile
-          key={p.sessionId}
-          testId="call-tile"
-          name={peers[p.sessionId]?.name ?? '接続中…'}
-          color={peers[p.sessionId]?.color ?? 'gray'}
-          stream={remoteStreams[p.sessionId] ?? null}
-          muted={p.muted}
-          cameraOff={p.cameraOff}
-        />
-      ))}
+      {screenStream && (
+        <ScreenTile name={identity.name} color={identity.color} stream={screenStream} />
+      )}
+      {others.map((p) => {
+        const name = peers[p.sessionId]?.name ?? '接続中…'
+        const color = peers[p.sessionId]?.color ?? 'gray'
+        const streams = remoteStreams[p.sessionId]
+        return (
+          <Fragment key={p.sessionId}>
+            <CallTile
+              testId="call-tile"
+              name={name}
+              color={color}
+              stream={findCameraStream(streams, p.screenStreamId)}
+              muted={p.muted}
+              cameraOff={p.cameraOff}
+            />
+            {p.screenStreamId && (
+              <ScreenTile
+                name={name}
+                color={color}
+                stream={streams?.[p.screenStreamId] ?? null}
+              />
+            )}
+          </Fragment>
+        )
+      })}
     </div>
   )
+}
+
+/** 画面共有用ストリームを除外し、参加者のカメラストリームを解決する */
+function findCameraStream(
+  streams: Record<string, MediaStream> | undefined,
+  screenStreamId: string | null,
+): MediaStream | null {
+  if (!streams) return null
+  return Object.values(streams).find((stream) => stream.id !== screenStreamId) ?? null
 }
 
 function CallTile({
@@ -158,17 +185,72 @@ function CallTile({
   )
 }
 
+function ScreenTile({
+  name,
+  color,
+  stream,
+}: {
+  name: string
+  color: StickyColor
+  stream: MediaStream | null
+}) {
+  const accent = STROKE_COLORS[color] ?? STROKE_COLORS.gray
+  return (
+    <div
+      data-testid="call-tile-screen"
+      data-peer-name={name}
+      className="relative aspect-video overflow-hidden rounded-xl bg-neutral-950"
+    >
+      {stream ? (
+        <video
+          autoPlay
+          playsInline
+          muted
+          className="h-full w-full object-contain"
+          ref={(el) => {
+            if (el && el.srcObject !== stream) {
+              el.srcObject = stream
+              el.play().catch(() => {})
+            }
+          }}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-neutral-500">
+          <Monitor size={32} />
+        </div>
+      )}
+      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-0.5 text-xs text-white">
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: accent }} />
+        {name}（画面）
+      </div>
+    </div>
+  )
+}
+
 function ControlBar() {
   const muted = useCallStore((s) => s.muted)
   const cameraOff = useCallStore((s) => s.cameraOff)
+  const screenStream = useCallStore((s) => s.screenStream)
+  const transcribing = useCallStore((s) => s.transcribing)
   const errorMessage = useCallStore((s) => s.errorMessage)
   const toggleMute = useCallStore((s) => s.toggleMute)
   const toggleCamera = useCallStore((s) => s.toggleCamera)
+  const startScreenShare = useCallStore((s) => s.startScreenShare)
+  const stopScreenShare = useCallStore((s) => s.stopScreenShare)
   const leave = useCallStore((s) => s.leave)
 
   return (
     <div className="flex items-center justify-center gap-3 border-t border-neutral-800 py-3">
       {errorMessage && <span className="text-xs text-red-400">{errorMessage}</span>}
+      {transcribing && (
+        <span
+          data-testid="call-transcribing"
+          className="flex items-center gap-1.5 text-xs text-neutral-300"
+        >
+          <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+          文字起こし中
+        </span>
+      )}
       <button
         data-testid="call-mic"
         onClick={toggleMute}
@@ -190,6 +272,17 @@ function ControlBar() {
         )}
       >
         {cameraOff ? <VideoOff size={17} /> : <Video size={17} />}
+      </button>
+      <button
+        data-testid="call-screen"
+        onClick={() => (screenStream ? stopScreenShare() : void startScreenShare())}
+        title={screenStream ? '共有を停止' : '画面を共有'}
+        className={cn(
+          'flex h-10 w-10 items-center justify-center rounded-full transition-colors',
+          screenStream ? 'bg-red-600 text-white' : 'bg-neutral-700 text-white hover:bg-neutral-600',
+        )}
+      >
+        {screenStream ? <MonitorOff size={17} /> : <Monitor size={17} />}
       </button>
       <button
         data-testid="call-leave"

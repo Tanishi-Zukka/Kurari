@@ -8,6 +8,7 @@ data class CallParticipant(
     val sessionId: String,
     val muted: Boolean = false,
     val cameraOff: Boolean = false,
+    val screenStreamId: String? = null,
 )
 
 /**
@@ -25,13 +26,17 @@ class CallRegistry {
     }
 
     /** 参加中ならメディア状態を更新して true。未参加は false（黙殺させる） */
-    fun updateMedia(sessionId: String, muted: Boolean, cameraOff: Boolean): Boolean =
-        entries.computeIfPresent(sessionId) { _, p -> p.copy(muted = muted, cameraOff = cameraOff) } != null
+    fun updateMedia(sessionId: String, muted: Boolean, cameraOff: Boolean, screenStreamId: String?): Boolean =
+        entries.computeIfPresent(sessionId) { _, p ->
+            p.copy(muted = muted, cameraOff = cameraOff, screenStreamId = screenStreamId)
+        } != null
 
     /** 退出。実際に消えたら true（participants 再配信の要否判定に使う） */
     fun leave(sessionId: String): Boolean = entries.remove(sessionId) != null
 
     fun participants(): List<CallParticipant> = entries.values.toList()
+
+    fun contains(sessionId: String): Boolean = entries.containsKey(sessionId)
 
     /** presence から消えたセッションを道連れに掃除。1件でも消したら true */
     fun retainOnly(alive: Set<String>): Boolean =

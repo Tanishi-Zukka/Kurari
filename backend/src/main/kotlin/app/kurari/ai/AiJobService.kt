@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 
@@ -129,6 +131,11 @@ class AiJobService(
                     ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "sourceText required for ${type.name}")
                 "# 文字起こし\n\n" + text.take(8000)
             }
+            AiJobType.call_minutes -> {
+                val text = req.sourceText?.takeIf { it.isNotBlank() }
+                    ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "sourceText required for ${type.name}")
+                "# 通話の文字起こし\n\n" + text.take(12000)
+            }
             AiJobType.project_brief, AiJobType.detect_conflicts, AiJobType.extract_decisions ->
                 contextBuilder.buildProjectContext(target())
             AiJobType.chat_reply -> {
@@ -202,12 +209,19 @@ class AiJobService(
     }
 
     /**
-     * ジョブ完了時のフォローアップ。chat_reply はAI応答を message ノードとして
+     * ジョブ完了時のフォローアップ。chat_reply と call_minutes の成果物を
      * サーバー側で作成する（ブラウザが閉じていても履歴が欠けない。
      * NodeService.upsert が node.created をWSブロードキャストするのでフロントは受信するだけ）。
      */
     private fun finalizeJob(job: AiJobEntity) {
-        if (job.type != AiJobType.chat_reply.name || job.status != AiJobStatus.done) return
+        if (job.status != AiJobStatus.done) return
+        when (job.type) {
+            AiJobType.chat_reply.name -> finalizeChatReply(job)
+            AiJobType.call_minutes.name -> finalizeCallMinutes(job)
+        }
+    }
+
+    private fun finalizeChatReply(job: AiJobEntity) {
         val roomId = (job.payload["chatRoomId"] as? String)?.let(UUID::fromString) ?: return
         val room = nodeRepo.findById(roomId).orElse(null) ?: return
         val text = job.result?.takeIf { it.isNotBlank() } ?: return
@@ -222,6 +236,45 @@ class AiJobService(
             ),
         )
     }
+
+    private fun finalizeCallMinutes(job: AiJobEntity) {
+        val markdown = job.result?.takeIf { it.isNotBlank() } ?: return
+        val workspace = nodeRepo.findFirstByTypeAndDeletedAtIsNull(NodeType.workspace) ?: return
+        val now = Instant.now()
+        val label = DateTimeFormatter.ofPattern("M/d HH:mm")
+            .withZone(ZoneId.of("Asia/Tokyo"))
+            .format(now)
+        nodeService.upsert(
+            UpsertNodeRequest(
+                id = UUID.randomUUID(),
+                workspaceId = workspace.workspaceId,
+                parentId = workspace.id,
+                type = NodeType.document,
+                name = "通話議事録 $label",
+                orderKey = now.toEpochMilli().toString(),
+                data = mapOf("content" to markdownToBlockNote(markdown), "aiJobId" to job.id.toString()),
+            ),
+        )
+    }
+
+    private fun markdownToBlockNote(markdown: String): List<Map<String, Any>> =
+        markdown.lineSequence().mapNotNull { raw ->
+            val line = raw.trim()
+            if (line.isEmpty()) return@mapNotNull null
+            val (type, props, text) = when {
+                line.startsWith("### ") -> Triple("heading", mapOf<String, Any>("level" to 3), line.removePrefix("### "))
+                line.startsWith("## ") -> Triple("heading", mapOf<String, Any>("level" to 2), line.removePrefix("## "))
+                line.startsWith("# ") -> Triple("heading", mapOf<String, Any>("level" to 1), line.removePrefix("# "))
+                line.startsWith("- ") -> Triple("bulletListItem", emptyMap<String, Any>(), line.removePrefix("- "))
+                line.startsWith("* ") -> Triple("bulletListItem", emptyMap<String, Any>(), line.removePrefix("* "))
+                else -> Triple("paragraph", emptyMap<String, Any>(), line)
+            }
+            buildMap<String, Any> {
+                put("type", type)
+                if (props.isNotEmpty()) put("props", props)
+                put("content", listOf(mapOf("type" to "text", "text" to text, "styles" to emptyMap<String, Any>())))
+            }
+        }.toList()
 
     /** claimed のままタイムアウトしたジョブを pending に戻す */
     @Scheduled(fixedDelay = 30_000)

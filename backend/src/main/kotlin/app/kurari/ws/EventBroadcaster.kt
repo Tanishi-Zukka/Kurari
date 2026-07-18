@@ -1,15 +1,21 @@
 package app.kurari.ws
 
+import app.kurari.ai.AiJobService
+import app.kurari.ai.CreateAiJobRequest
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.annotation.Lazy
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.CloseStatus
 import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
 import org.springframework.web.socket.handler.TextWebSocketHandler
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -23,7 +29,10 @@ class EventBroadcaster(
     private val objectMapper: ObjectMapper,
     private val presence: PresenceRegistry,
     private val calls: CallRegistry,
+    private val transcripts: CallTranscriptRegistry,
+    @Lazy private val aiJobs: AiJobService,
     @Value("\${kurari.presence.offline-after-seconds}") private val presenceTtlSeconds: Long,
+    @Value("\${kurari.call.minutes-min-chars:100}") private val minutesMinChars: Int,
 ) : TextWebSocketHandler() {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -36,7 +45,7 @@ class EventBroadcaster(
     override fun afterConnectionClosed(session: WebSocketSession, status: CloseStatus) {
         sessions.remove(session.id)
         if (presence.leave(session.id)) broadcast("presence.peers", presence.peers())
-        if (calls.leave(session.id)) broadcast("call.participants", calls.participants())
+        removeCallParticipant(session.id)
     }
 
     override fun handleTextMessage(session: WebSocketSession, message: TextMessage) {
@@ -81,21 +90,30 @@ class EventBroadcaster(
                         sessionId = session.id,
                         muted = payload["muted"]?.asBoolean() ?: false,
                         cameraOff = payload["cameraOff"]?.asBoolean() ?: false,
+                        screenStreamId = payload["screenStreamId"]?.takeIf { it.isTextual }?.asText(),
                     ),
                 )
                 sendTo(session, "call.joined", mapOf("participants" to calls.participants()))
                 broadcast("call.participants", calls.participants())
             }
             "call.leave" -> {
-                if (calls.leave(session.id)) broadcast("call.participants", calls.participants())
+                removeCallParticipant(session.id)
             }
             "call.media" -> {
                 val updated = calls.updateMedia(
                     session.id,
                     muted = payload["muted"]?.asBoolean() ?: false,
                     cameraOff = payload["cameraOff"]?.asBoolean() ?: false,
+                    screenStreamId = payload["screenStreamId"]?.takeIf { it.isTextual }?.asText(),
                 )
                 if (updated) broadcast("call.participants", calls.participants())
+            }
+            "call.transcript" -> {
+                if (!calls.contains(session.id)) return
+                val text = payload["text"]?.asText()?.trim()?.take(500).orEmpty()
+                if (text.isEmpty()) return
+                val speaker = presence.peers().firstOrNull { it.sessionId == session.id }?.name ?: "不明"
+                transcripts.append(TranscriptLine(speaker = speaker, text = text, at = Instant.now()))
             }
             "call.signal" -> {
                 // WebRTC の offer/answer/ICE を宛先セッションへそのまま中継（宛先不在は黙殺）
@@ -114,8 +132,40 @@ class EventBroadcaster(
     fun evictStalePresence() {
         if (presence.evictStale(presenceTtlSeconds)) broadcast("presence.peers", presence.peers())
         // presence から消えたセッションは通話からも退出させる
-        if (calls.retainOnly(presence.peers().map { it.sessionId }.toSet())) {
-            broadcast("call.participants", calls.participants())
+        callParticipantsChanged(calls.retainOnly(presence.peers().map { it.sessionId }.toSet()))
+    }
+
+    private fun removeCallParticipant(sessionId: String) {
+        callParticipantsChanged(calls.leave(sessionId))
+    }
+
+    /** 退出3経路の参加者更新と、最後の退出時の議事録生成を一か所で扱う。 */
+    private fun callParticipantsChanged(changed: Boolean) {
+        if (!changed) return
+        val participants = calls.participants()
+        broadcast("call.participants", participants)
+        if (participants.isNotEmpty()) return
+
+        if (transcripts.totalChars() < minutesMinChars) {
+            transcripts.clear()
+            return
+        }
+        val lines = transcripts.snapshotAndClear()
+        if (lines.isEmpty()) return
+        val zone = ZoneId.of("Asia/Tokyo")
+        val time = DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
+        val dateTime = DateTimeFormatter.ofPattern("M/d HH:mm").withZone(zone)
+        val sourceText = buildString {
+            appendLine("参加者: ${lines.map { it.speaker }.distinct().joinToString("、")}")
+            appendLine("開始: ${dateTime.format(lines.first().at)}")
+            appendLine("終了: ${dateTime.format(lines.last().at)}")
+            appendLine()
+            lines.forEach { appendLine("[${time.format(it.at)}] ${it.speaker}: ${it.text}") }
+        }
+        try {
+            aiJobs.create(CreateAiJobRequest(type = "call_minutes", sourceText = sourceText))
+        } catch (e: Exception) {
+            log.error("failed to create call minutes job", e)
         }
     }
 
