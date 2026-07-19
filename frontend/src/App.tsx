@@ -5,6 +5,7 @@ import { useUiStore } from '@/stores/ui-store'
 import { useAiJobStore } from '@/stores/ai-job-store'
 import { usePresenceStore } from '@/stores/presence-store'
 import { useCallStore } from '@/stores/call-store'
+import { useReactionStore } from '@/stores/reaction-store'
 import { connectWs } from '@/lib/ws'
 import { usePresenceLocation } from '@/lib/use-presence-location'
 import { api } from '@/lib/api'
@@ -93,6 +94,7 @@ function AuthorizedApp() {
         else if (ev.type.startsWith('presence.')) usePresenceStore.getState().applyPresenceEvent(ev)
         else if (ev.type.startsWith('access.')) useAccessStore.getState().applyAccessEvent(ev)
         else if (ev.type.startsWith('call.')) useCallStore.getState().applyCallEvent(ev)
+        else if (ev.type === 'reaction.ping') useReactionStore.getState().receive(ev.payload)
       },
       (state) => {
         setWsState(state)
@@ -104,6 +106,7 @@ function AuthorizedApp() {
     )
     usePresenceStore.getState().bindSender(conn.send)
     useCallStore.getState().bindSender(conn.send)
+    useReactionStore.getState().bindSender(conn.send)
     const keepalive = window.setInterval(() => usePresenceStore.getState().sendKeepalive(), 30000)
     return () => {
       window.clearInterval(keepalive)

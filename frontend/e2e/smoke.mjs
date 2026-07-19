@@ -28,6 +28,12 @@ const FIRST_BOARD = '00000000-0000-0000-0000-000000000003'
   }
   const junkNames = ['スモークテキスト', '(empty sticky)', '(image)', '新しいボード']
   for (const n of nodes) {
+    if (n.data?.reactions) {
+      await fetch(`http://localhost:8080/api/nodes/${n.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: { reactions: null } }),
+      })
+    }
     if (n.type === 'section') continue
     // チャット履歴・AI Mode の保存物は毎回積み増しになるので消す
     if (
@@ -134,6 +140,21 @@ try {
   await page.getByText('スモーク太郎').first().waitFor()
   ok('コメント投稿')
 
+  // 永続リアクション: 追加 → トグルで削除 → 再追加
+  const selectedSticky = page.locator('.react-flow__node.selected', { hasText: 'スモークテスト付箋' })
+  await selectedSticky.hover()
+  await selectedSticky.getByTestId('reaction-add').click()
+  await selectedSticky.getByTestId('reaction-emoji-👍').click()
+  const thumbsChip = selectedSticky.locator('[data-testid="reaction-chip"][data-emoji="👍"]')
+  await thumbsChip.getByText('1', { exact: false }).waitFor()
+  await thumbsChip.click()
+  await thumbsChip.waitFor({ state: 'detached' })
+  await selectedSticky.hover()
+  await selectedSticky.getByTestId('reaction-add').click()
+  await selectedSticky.getByTestId('reaction-emoji-👍').click()
+  await thumbsChip.waitFor()
+  ok('永続リアクション（追加・トグル）')
+
   // 7. AIタブ → 要約実行（Agent経由の実要約。最大120秒待つ）
   await page.getByRole('button', { name: 'AI' }).click()
   await page.getByRole('button', { name: /このボードを要約/ }).click()
@@ -151,6 +172,7 @@ try {
   await page.reload()
   await page.getByText('スモークテスト付箋').first().waitFor()
   await page.locator('[data-tree-id]', { hasText: 'AI Outputs' }).first().waitFor()
+  await page.locator('[data-testid="reaction-chip"][data-emoji="👍"]').first().waitFor()
   ok('リロード後もデータが残る（永続化）')
 
   // 10. モード切替（Callプレースホルダー表示）
@@ -456,6 +478,17 @@ try {
   await page.getByRole('link', { name: /Board/ }).click()
   await pageB.getByRole('link', { name: /Board/ }).click()
   await pageB.locator('.react-flow__pane').first().waitFor()
+  // エフェメラルリアクション: WS経由で相手側へ表示
+  await page.getByTitle('絵文字リアクション').click()
+  await page.getByTestId('reaction-palette').getByTestId('reaction-emoji-👍').click()
+  const remoteReaction = pageB.locator('[data-testid="reaction-ping"][data-emoji="👍"]')
+  for (let i = 0; i < 8 && (await remoteReaction.count()) === 0; i++) {
+    await page.getByTestId('reaction-overlay').click({ position: { x: 350 + i * 8, y: 300 } })
+    await page.waitForTimeout(300)
+  }
+  await remoteReaction.first().waitFor()
+  await page.keyboard.press('Escape')
+  ok('エフェメラルリアクション（2クライアント同期）')
   // 送信は 50ms throttle なので、出るまで動かし続けながら待つ
   const remoteCursor = page.locator('[data-testid="remote-cursor"][data-peer-name="スモーク花子"]')
   for (let i = 0; i < 50 && (await remoteCursor.count()) === 0; i++) {

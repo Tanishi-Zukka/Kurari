@@ -1,1 +1,8 @@
 @import "tailwindcss";
+@keyframes reaction-float {
+  0% { opacity: 1; transform: translateY(0); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-48px); }
+}
+
+.reaction-float { animation: reaction-float 1.6s ease-out forwards; }

@@ -18,12 +18,14 @@ import {
   ListTodo,
   CheckCheck,
   MessageCircle,
+  SmilePlus,
 } from 'lucide-react'
 import { useHistoryStore } from '@/stores/history-store'
 import { useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { deriveNodes, type DeriveKind } from '@/lib/derive'
 import type { StickyColor } from '@/types/model'
+import { REACTION_EMOJIS } from '@/lib/reactions'
 
 /** 派生（タスク化・意思決定ログ化）の対象になるボード要素種別 */
 const DERIVABLE_TYPES = ['sticky', 'text_card', 'shape'] as const
@@ -52,6 +54,8 @@ export function BoardToolbar({
   onColorChange,
   translucent,
   onTranslucentChange,
+  reactionEmoji,
+  onPickReaction,
 }: {
   activeTool: BoardTool
   onSelectTool: () => void
@@ -66,6 +70,8 @@ export function BoardToolbar({
   onColorChange: (color: StickyColor) => void
   translucent: boolean
   onTranslucentChange: (v: boolean) => void
+  reactionEmoji: string | null
+  onPickReaction: (emoji: string | null) => void
 }) {
   const { getNodes, getEdges, deleteElements } = useReactFlow()
   const canUndo = useHistoryStore((s) => s.past.length > 0)
@@ -119,6 +125,21 @@ export function BoardToolbar({
 
   return (
     <div className="absolute left-1/2 top-3 z-10 flex w-max -translate-x-1/2 flex-nowrap items-center gap-1 whitespace-nowrap rounded-lg border border-neutral-200 bg-white px-2 py-1.5 shadow-sm">
+      <Button
+        size="icon"
+        variant={reactionEmoji ? 'primary' : 'ghost'}
+        onClick={() => onPickReaction(reactionEmoji ? null : REACTION_EMOJIS[0])}
+        title="絵文字リアクション"
+      >
+        <SmilePlus size={15} />
+      </Button>
+      {reactionEmoji && (
+        <div data-testid="reaction-palette" className="absolute left-0 top-full mt-1 flex gap-1 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg">
+          {REACTION_EMOJIS.map((emoji) => (
+            <button key={emoji} data-testid={`reaction-emoji-${emoji}`} className={cn('rounded p-1 text-lg hover:bg-neutral-100', reactionEmoji === emoji && 'bg-neutral-100 ring-1 ring-neutral-300')} onClick={() => onPickReaction(emoji)}>{emoji}</button>
+          ))}
+        </div>
+      )}
       <Button
         size="icon"
         variant={placing === 'comment_pin' ? 'primary' : 'ghost'}

@@ -150,6 +150,18 @@ export interface CommentPinData {
   resolved?: boolean
 }
 
+export type ReactionMap = Record<string, string[]>
+
+export function reactionsOf(node: KNode): ReactionMap {
+  const value = node.data.reactions
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string[]] =>
+      Array.isArray(entry[1]) && entry[1].every((id) => typeof id === 'string'),
+    ),
+  )
+}
+
 export function commentPinData(node: KNode): CommentPinData {
   const d = node.data as Partial<CommentPinData>
   return {
@@ -304,6 +316,7 @@ export type ServerEvent =
   | { type: 'presence.joined'; payload: { sessionId: string; peers: PresencePeer[] } }
   | { type: 'presence.peers'; payload: PresencePeer[] }
   | { type: 'presence.updated'; payload: PresencePeer }
+  | { type: 'reaction.ping'; payload: { emoji: string; x: number; y: number; boardId: string; sessionId: string; name: string; color: StickyColor } }
   | { type: 'access.requested'; payload: { requestId: string; name: string; requestedAt: string } }
   | { type: 'access.resolved'; payload: { requestId: string; status: string } }
   | { type: 'call.joined'; payload: { participants: CallParticipant[] } }

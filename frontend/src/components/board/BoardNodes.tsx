@@ -5,6 +5,7 @@ import { useEntityStore } from '@/stores/entity-store'
 import { useHistoryStore } from '@/stores/history-store'
 import { useUiStore } from '@/stores/ui-store'
 import type { ShapeKind, StickyColor } from '@/types/model'
+import { ReactionChips } from './ReactionChips'
 
 export interface BoardItemFlowData {
   text: string
@@ -264,6 +265,7 @@ export function StickyNode({ id, data, selected }: NodeProps<BoardItemFlowNode>)
     >
       <ItemResizer id={id} selected={selected} minWidth={80} minHeight={80} />
       <ItemHandles />
+      <ReactionChips nodeId={id} />
       <EditableText
         id={id}
         text={data.text}
@@ -284,6 +286,7 @@ export function TextCardNode({ id, data, selected }: NodeProps<BoardItemFlowNode
     >
       <ItemResizer id={id} selected={selected} />
       <ItemHandles />
+      <ReactionChips nodeId={id} />
       <EditableText
         id={id}
         text={data.text}
@@ -300,6 +303,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<BoardItemFlowNode>) 
     <div className="group/item h-full w-full">
       <ItemResizer id={id} selected={selected} />
       <ItemHandles />
+      <ReactionChips nodeId={id} />
       <div
         className={cn(
           'flex h-full w-full items-center justify-center border-2 p-2 text-center',
@@ -442,6 +446,7 @@ export function DrawingNode({ id, data, selected }: NodeProps<DrawingFlowNode>) 
     <div className={cn('group/item h-full w-full rounded', selected && 'ring-2 ring-neutral-800/60')}>
       <ItemResizer id={id} selected={selected} />
       <ItemHandles />
+      <ReactionChips nodeId={id} />
       <svg className="h-full w-full" viewBox={`0 0 ${vw} ${vh}`} preserveAspectRatio="none">
         <path
           d={d}
@@ -470,6 +475,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageFlowNode>) {
       {/* 画像は原寸比率で配置されるので、リサイズも比率固定にして歪みを防ぐ */}
       <ItemResizer id={id} selected={selected} keepAspectRatio minWidth={40} minHeight={40} />
       <ItemHandles />
+      <ReactionChips nodeId={id} />
       {/* /api は vite.config.ts の dev proxy 経由でバックエンドに届くため相対URLのままでよい */}
       <img src={data.url} draggable={false} className="h-full w-full rounded object-contain" alt="" />
     </div>

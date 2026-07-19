@@ -84,6 +84,17 @@ class EventBroadcaster(
                 } ?: return
                 broadcast("presence.updated", updated)
             }
+            "reaction.ping" -> {
+                val peer = presence.peers().firstOrNull { it.sessionId == session.id } ?: return
+                val emoji = payload["emoji"]?.takeIf { it.isTextual }?.asText()?.take(16) ?: return
+                val x = payload["x"]?.takeIf { it.isNumber }?.asDouble() ?: return
+                val y = payload["y"]?.takeIf { it.isNumber }?.asDouble() ?: return
+                val boardId = payload["boardId"]?.takeIf { it.isTextual }?.asText()?.take(64) ?: return
+                broadcast("reaction.ping", mapOf(
+                    "emoji" to emoji, "x" to x, "y" to y, "boardId" to boardId,
+                    "sessionId" to session.id, "name" to peer.name, "color" to peer.color,
+                ))
+            }
             "call.join" -> {
                 calls.join(
                     CallParticipant(

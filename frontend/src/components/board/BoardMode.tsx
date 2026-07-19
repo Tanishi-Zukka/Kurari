@@ -41,6 +41,8 @@ import { BoardZoomControl } from './BoardZoomControl'
 import { BoardSyncBadge } from './BoardSyncBadge'
 import { RemotePresenceLayer } from './RemotePresenceLayer'
 import { CommentPinNode } from './BoardCommentPin'
+import { ReactionPingLayer } from './ReactionPingLayer'
+import { useReactionStore } from '@/stores/reaction-store'
 import {
   stickyData,
   drawingData,
@@ -189,6 +191,7 @@ function BoardCanvas() {
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([])
   // 配置モード: ツールを選んでからカーソルで配置場所を決める（FigJam 風）
   const [placing, setPlacing] = useState<NewItemKind | null>(null)
+  const [reactionEmoji, setReactionEmoji] = useState<string | null>(null)
   const [placePos, setPlacePos] = useState<{ x: number; y: number } | null>(null)
   // セクション作成用: 2点ドラッグ中の矩形（wrapper 基準のスクリーン座標）
   const [drawRect, setDrawRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
@@ -765,6 +768,10 @@ function BoardCanvas() {
         setPlacePos(null)
         return
       }
+      if (e.key === 'Escape' && reactionEmoji) {
+        setReactionEmoji(null)
+        return
+      }
       if (e.key === 'Escape' && activeTool === 'pen') {
         setActiveTool('select')
         return
@@ -784,7 +791,7 @@ function BoardCanvas() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeTool, placing])
+  }, [activeTool, placing, reactionEmoji])
 
   const onPaneDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -985,7 +992,27 @@ function BoardCanvas() {
       >
         <Background gap={20} size={1.5} />
         <RemotePresenceLayer boardId={activeBoardId} />
+        <ReactionPingLayer boardId={activeBoardId} />
       </ReactFlow>
+      {reactionEmoji && (
+        <div
+          data-testid="reaction-overlay"
+          className="absolute inset-0 z-[5] cursor-crosshair"
+          onPointerMove={(e) => {
+            const rect = wrapperRef.current?.getBoundingClientRect()
+            if (rect) setPlacePos({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+          }}
+          onPointerLeave={() => setPlacePos(null)}
+          onClick={(e) => {
+            const point = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+            useReactionStore.getState().sendPing(reactionEmoji, point.x, point.y, activeBoardId)
+          }}
+        >
+          <div className="pointer-events-none absolute text-3xl opacity-60" style={{ left: placePos?.x ?? -100, top: placePos?.y ?? -100 }}>
+            {reactionEmoji}
+          </div>
+        </div>
+      )}
       {placing && (
         <div
           data-testid="place-overlay"
@@ -1101,16 +1128,19 @@ function BoardCanvas() {
           setActiveTool('select')
           setPlacing(null)
           setPlacePos(null)
+          setReactionEmoji(null)
         }}
         onPenTool={() => {
           setPlacing(null)
           setPlacePos(null)
+          setReactionEmoji(null)
           setActiveTool((t) => (t === 'pen' ? 'select' : 'pen'))
         }}
         placing={placing}
         onPickPlace={(kind) => {
           setActiveTool('select')
           setPlacePos(null)
+          setReactionEmoji(null)
           setPlacing((cur) => (cur === kind ? null : kind))
         }}
         onImageClick={() => fileInputRef.current?.click()}
@@ -1120,6 +1150,12 @@ function BoardCanvas() {
         onColorChange={setColor}
         translucent={translucent}
         onTranslucentChange={setTranslucent}
+        reactionEmoji={reactionEmoji}
+        onPickReaction={(emoji) => {
+          setPlacing(null)
+          setActiveTool('select')
+          setReactionEmoji(emoji)
+        }}
       />
       <BoardZoomControl />
       <BoardSyncBadge />
