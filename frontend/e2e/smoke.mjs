@@ -32,6 +32,7 @@ const FIRST_BOARD = '00000000-0000-0000-0000-000000000003'
     // チャット履歴・AI Mode の保存物は毎回積み増しになるので消す
     if (
       n.type === 'chat_room' ||
+      n.type === 'comment_pin' ||
       (n.type === 'group' && n.name === '意思決定ログ') ||
       (n.type === 'group' && n.name === 'タスク') ||
       (n.type === 'ai_summary' && n.name.includes('プロジェクト説明')) ||
@@ -130,6 +131,7 @@ try {
   await page.getByPlaceholder(/コメントを書く/).fill('スモークコメント')
   await page.getByRole('button', { name: '送信' }).click()
   await page.getByText('スモークコメント').first().waitFor()
+  await page.getByText('スモーク太郎').first().waitFor()
   ok('コメント投稿')
 
   // 7. AIタブ → 要約実行（Agent経由の実要約。最大120秒待つ）
@@ -260,7 +262,18 @@ try {
   await page.waitForTimeout(300)
   ok('テキストカード・図形の作成（配置モード） → ツリー同期')
 
-  // 20. エッジの永続化（リロード後も残る）
+  // 20. コメントピン配置 → 作成直後のスレッドへ実名で投稿
+  await page.getByTitle('コメントピンを追加').click()
+  await page.getByTestId('place-overlay').click()
+  await page.getByTestId('pin-popover').waitFor()
+  await page.getByTestId('pin-comment-input').fill('スモークピンコメント')
+  await page.getByTestId('pin-comment-send').click()
+  // getByText は入力に使った textarea（text content に値が残る）にもマッチするため <p> に絞る
+  await page.getByTestId('pin-popover').locator('p', { hasText: 'スモークピンコメント' }).waitFor()
+  await page.getByTestId('pin-popover').getByText('スモーク太郎').waitFor()
+  ok('コメントピン（配置 → 実名コメント投稿）')
+
+  // 21. エッジの永続化（リロード後も残る）
   await page.reload()
   await page.locator('.react-flow__edge').first().waitFor({ timeout: 10000 })
   ok('エッジがリロード後も残る（永続化）')

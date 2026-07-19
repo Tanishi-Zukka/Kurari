@@ -10,7 +10,8 @@ export function BoardSyncBadge() {
     wsState === 'open' ? 'bg-emerald-500' : wsState === 'connecting' ? 'bg-amber-500' : 'bg-red-500'
 
   return (
-    <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] text-neutral-600 shadow-sm">
+    // 表示専用バッジ。ツールバーが広がって重なったときにクリックを奪わないよう pointer-events は切る
+    <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] text-neutral-600 shadow-sm">
       <span className={cn('h-1.5 w-1.5 rounded-full', dotClass)} />
       {label}
     </div>

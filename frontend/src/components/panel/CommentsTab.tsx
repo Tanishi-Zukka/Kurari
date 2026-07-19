@@ -3,12 +3,15 @@ import { childrenOf, useEntityStore } from '@/stores/entity-store'
 import { Button, Textarea } from '@/components/ui/primitives'
 import type { CommentData } from '@/types/model'
 import { MessageSquare } from 'lucide-react'
+import { usePresenceStore } from '@/stores/presence-store'
+import { STROKE_COLORS } from '@/components/board/BoardNodes'
 
 export function CommentsTab({ contextNodeId }: { contextNodeId: string | null }) {
   const nodes = useEntityStore((s) => s.nodes)
   const createNode = useEntityStore((s) => s.createNode)
   const [draft, setDraft] = useState('')
   const [posting, setPosting] = useState(false)
+  const identity = usePresenceStore((s) => s.identity)
 
   const comments = useMemo(() => {
     if (!contextNodeId) return []
@@ -24,7 +27,7 @@ export function CommentsTab({ contextNodeId }: { contextNodeId: string | null })
         parentId: contextNodeId,
         type: 'comment',
         name: text.slice(0, 30),
-        data: { text, author: 'me' } satisfies CommentData,
+        data: { text, author: identity.name || '匿名', authorColor: identity.color, authorClientId: identity.clientId } satisfies CommentData,
       })
       setDraft('')
     } finally {
@@ -50,7 +53,9 @@ export function CommentsTab({ contextNodeId }: { contextNodeId: string | null })
           return (
             <div key={c.id} className="rounded-lg bg-neutral-50 px-3 py-2">
               <div className="mb-0.5 flex items-baseline gap-2">
-                <span className="text-xs font-semibold text-neutral-700">{d.author ?? 'me'}</span>
+                <span className="text-xs font-semibold" style={{ color: STROKE_COLORS[d.authorColor ?? 'gray'] }}>
+                  {d.author && d.author !== 'me' ? d.author : '自分'}
+                </span>
                 <span className="text-[10px] text-neutral-400">
                   {new Date(c.createdAt).toLocaleString()}
                 </span>

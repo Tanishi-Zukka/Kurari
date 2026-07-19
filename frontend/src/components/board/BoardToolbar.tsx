@@ -17,6 +17,7 @@ import {
   Redo2,
   ListTodo,
   CheckCheck,
+  MessageCircle,
 } from 'lucide-react'
 import { useHistoryStore } from '@/stores/history-store'
 import { useEntityStore } from '@/stores/entity-store'
@@ -27,7 +28,7 @@ import type { StickyColor } from '@/types/model'
 /** 派生（タスク化・意思決定ログ化）の対象になるボード要素種別 */
 const DERIVABLE_TYPES = ['sticky', 'text_card', 'shape'] as const
 
-export type NewItemKind = 'sticky' | 'text_card' | 'rect' | 'ellipse' | 'section'
+export type NewItemKind = 'sticky' | 'text_card' | 'rect' | 'ellipse' | 'section' | 'comment_pin'
 export type BoardTool = 'select' | 'pen'
 
 const COLORS: { color: StickyColor; className: string }[] = [
@@ -118,6 +119,14 @@ export function BoardToolbar({
 
   return (
     <div className="absolute left-1/2 top-3 z-10 flex w-max -translate-x-1/2 flex-nowrap items-center gap-1 whitespace-nowrap rounded-lg border border-neutral-200 bg-white px-2 py-1.5 shadow-sm">
+      <Button
+        size="icon"
+        variant={placing === 'comment_pin' ? 'primary' : 'ghost'}
+        onClick={() => onPickPlace('comment_pin')}
+        title="コメントピンを追加"
+      >
+        <MessageCircle size={15} />
+      </Button>
       <Button
         size="icon"
         variant={activeTool === 'select' && !placing ? 'primary' : 'ghost'}

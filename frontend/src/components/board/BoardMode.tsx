@@ -40,10 +40,12 @@ import { BoardToolbar, type NewItemKind, type BoardTool } from './BoardToolbar'
 import { BoardZoomControl } from './BoardZoomControl'
 import { BoardSyncBadge } from './BoardSyncBadge'
 import { RemotePresenceLayer } from './RemotePresenceLayer'
+import { CommentPinNode } from './BoardCommentPin'
 import {
   stickyData,
   drawingData,
   imageData,
+  commentPinData,
   absoluteXY,
   BOARD_ITEM_TYPES,
   type StickyColor,
@@ -61,6 +63,7 @@ const nodeTypes = {
   drawing: DrawingNode,
   image: ImageNode,
   section: SectionNode,
+  comment_pin: CommentPinNode,
 }
 
 const edgeTypes = {
@@ -74,6 +77,7 @@ const ITEM_DEFAULTS: Record<string, { w: number; h: number; data: Record<string,
   rect: { w: 180, h: 100, data: { kind: 'rect' } },
   ellipse: { w: 160, h: 110, data: { kind: 'ellipse' } },
   section: { w: 600, h: 400, data: {} },
+  comment_pin: { w: 28, h: 28, data: {} },
 }
 
 /** 画像配置時の最大辺。原寸の縦横比を保ったままこのサイズに収める */
@@ -116,6 +120,16 @@ function PlaceGhost({
         className="pointer-events-none absolute rounded-lg border-2 border-neutral-400 bg-neutral-400/10 opacity-60"
         style={style}
       />
+    )
+  }
+  if (kind === 'comment_pin') {
+    return (
+      <div className="pointer-events-none absolute opacity-60" style={style}>
+        <div
+          className="h-7 w-7 border-2 border-white shadow-md"
+          style={{ backgroundColor: STROKE_COLORS[color], borderRadius: '0 50% 50% 50%', transform: 'rotate(45deg)' }}
+        />
+      </div>
     )
   }
   return (
@@ -241,6 +255,22 @@ function BoardCanvas() {
           width: d.w,
           height: d.h,
           measured: { width: d.w, height: d.h },
+          ...parent,
+        }
+      }
+      if (n.type === 'comment_pin') {
+        const d = commentPinData(n)
+        return {
+          id: n.id,
+          type: n.type,
+          position: { x: d.x, y: d.y },
+          data: { authorName: d.authorName, authorColor: d.authorColor },
+          selected: selectedIds.includes(n.id),
+          width: 28,
+          height: 28,
+          measured: { width: 28, height: 28 },
+          // 要素の上に置いたピンが下の要素にクリックを奪われないよう常に前面
+          zIndex: 1000,
           ...parent,
         }
       }
@@ -634,11 +664,20 @@ function BoardCanvas() {
       const sec = sectionAt(pos)
       const origin = sec ? absoluteXY(snapshotI, sec) : { x: 0, y: 0 }
       const type: NodeType = kind === 'rect' || kind === 'ellipse' ? 'shape' : kind
+      const identity = usePresenceStore.getState().identity
+      const isPin = kind === 'comment_pin'
       const node = await createNode({
         parentId: sec?.id ?? activeBoardId,
         type,
-        name: stickyNameFrom(''),
-        data: {
+        name: isPin ? 'コメント' : stickyNameFrom(''),
+        data: isPin ? {
+          x: pos.x - origin.x,
+          y: pos.y - origin.y,
+          w: 28,
+          h: 28,
+          authorName: identity.name || '匿名',
+          authorColor: identity.color,
+        } : {
           text: '',
           color: itemColor,
           translucent,

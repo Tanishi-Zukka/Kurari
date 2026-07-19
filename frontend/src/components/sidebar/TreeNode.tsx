@@ -9,7 +9,7 @@ import { taskData, type NodeType } from '@/types/model'
 import {
   Boxes, Folder, LayoutDashboard, StickyNote, MessageSquare, MessagesSquare, Sparkles,
   FileText, ChevronRight, ChevronDown, Trash2, Layers, Hash, Type, Square, Plus, Frame,
-  CheckCheck, HelpCircle, ListTodo, Link,
+  CheckCheck, HelpCircle, ListTodo, Link, MessageCircle,
 } from 'lucide-react'
 
 const ICONS: Partial<Record<NodeType, typeof Boxes>> = {
@@ -21,6 +21,7 @@ const ICONS: Partial<Record<NodeType, typeof Boxes>> = {
   shape: Square,
   section: Frame,
   comment: MessageSquare,
+  comment_pin: MessageCircle,
   ai_summary: Sparkles,
   document: FileText,
   block: Hash,

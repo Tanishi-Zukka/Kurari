@@ -18,6 +18,7 @@ const DATA_TEXT_TYPES = new Set<NodeType>([
   'open_question',
   'task',
   'comment',
+  'comment_pin',
 ])
 
 const documentTextCache = new Map<string, { updatedAt: string; lines: BlockText[] }>()

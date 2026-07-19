@@ -14,6 +14,7 @@ export type NodeType =
   | 'chat_room'
   | 'message'
   | 'comment'
+  | 'comment_pin'
   | 'ai_summary'
   | 'decision'
   | 'open_question'
@@ -94,7 +95,7 @@ export interface EdgeData {
 }
 
 /** ボードにキャンバス要素として描画されるノード種別（セクションは別扱い） */
-export const BOARD_ITEM_TYPES: NodeType[] = ['sticky', 'text_card', 'shape', 'drawing', 'image']
+export const BOARD_ITEM_TYPES: NodeType[] = ['sticky', 'text_card', 'shape', 'drawing', 'image', 'comment_pin']
 
 /**
  * ボード要素の絶対座標。セクション配下の要素は data.x/y をセクション相対で持つため、
@@ -135,6 +136,31 @@ export interface ImageData {
 export interface CommentData {
   text: string
   author: string
+  authorColor?: StickyColor
+  authorClientId?: string
+}
+
+export interface CommentPinData {
+  x: number
+  y: number
+  w: number
+  h: number
+  authorName: string
+  authorColor: StickyColor
+  resolved?: boolean
+}
+
+export function commentPinData(node: KNode): CommentPinData {
+  const d = node.data as Partial<CommentPinData>
+  return {
+    x: d.x ?? 0,
+    y: d.y ?? 0,
+    w: d.w ?? 28,
+    h: d.h ?? 28,
+    authorName: d.authorName ?? '匿名',
+    authorColor: d.authorColor ?? 'gray',
+    resolved: d.resolved,
+  }
 }
 
 /**

@@ -9,6 +9,7 @@ import { Badge, Button, Spinner, Textarea } from '@/components/ui/primitives'
 import { cn } from '@/lib/utils'
 import { CheckCheck, HelpCircle, ListTodo, SendHorizonal, Sparkles, StickyNote } from 'lucide-react'
 import type { KNode } from '@/types/model'
+import { usePresenceStore } from '@/stores/presence-store'
 
 /**
  * AIチャット。contextTargetId（board / document / project）に文脈が紐づく。
@@ -26,6 +27,7 @@ export function ChatView({
   const createNode = useEntityStore((s) => s.createNode)
   const jobs = useAiJobStore((s) => s.jobs)
   const aiStatus = useUiStore((s) => s.aiStatus)
+  const identity = usePresenceStore((s) => s.identity)
 
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -63,7 +65,7 @@ export function ChatView({
     if (failed.length === 0) return null
     const latest = failed.reduce((a, b) => (a.updatedAt > b.updatedAt ? a : b))
     // 失敗より後にAI応答が来ていれば解消済みとみなす
-    const lastAi = messages.filter((m) => m.data.author === 'ai').at(-1)
+    const lastAi = messages.filter((m) => m.data.author === 'ai' && !m.data.authorClientId).at(-1)
     if (lastAi && lastAi.createdAt > latest.updatedAt) return null
     return latest
   }, [roomJobs, messages])
@@ -140,7 +142,7 @@ export function ChatView({
           parentId: r.id,
           type: 'message',
           name: body.replace(/\n/g, ' ').slice(0, 30),
-          data: { author: 'user', text: body },
+          data: { author: identity.name || 'user', text: body, authorColor: identity.color, authorClientId: identity.clientId },
         })
         const job = await createAiJob({
           type: 'chat_reply',
@@ -156,7 +158,7 @@ export function ChatView({
         setSending(false)
       }
     },
-    [sending, ensureRoom, createNode, contextTargetId],
+    [sending, ensureRoom, createNode, contextTargetId, identity],
   )
 
   /** 失敗したジョブの再送（直前のユーザーメッセージを再利用） */
@@ -192,7 +194,7 @@ export function ChatView({
         )}
         <div className="flex flex-col gap-2">
           {messages.map((m) => {
-            const isAi = m.data.author === 'ai'
+            const isAi = m.data.author === 'ai' && !m.data.authorClientId
             const actions = (
               <span
                 className={cn(

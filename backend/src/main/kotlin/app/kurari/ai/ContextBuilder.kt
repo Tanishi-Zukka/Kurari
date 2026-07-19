@@ -69,6 +69,22 @@ class ContextBuilder(
         // セクション（入れ子はパス表記）は見出しとして構造を伝える
         for (section in sections) appendSectionTree(sb, section, "")
 
+        val pins = all.filter { it.type == NodeType.comment_pin }
+        if (pins.isNotEmpty()) {
+            sb.appendLine()
+            sb.appendLine("## コメント（ピン）")
+            for (pin in pins) {
+                val comments = repo.findByParentIdAndDeletedAtIsNull(pin.id)
+                    .filter { it.type == NodeType.comment }
+                val thread = comments.joinToString("; ") { comment ->
+                    val author = comment.data["author"] ?: "?"
+                    val body = (comment.data["text"] as? String ?: "").replace("\n", " ")
+                    "$author: $body"
+                }
+                sb.appendLine("- [コメントピン] \"${pin.name}\"${if (thread.isBlank()) "" else " ($thread)"}")
+            }
+        }
+
         val edges = edgeRepo.findByBoardIdAndDeletedAtIsNull(boardId)
         if (edges.isNotEmpty()) {
             sb.appendLine()
@@ -282,6 +298,7 @@ class ContextBuilder(
             NodeType.sticky -> "[付箋:${item.data["color"] ?: "yellow"}] \"$text\""
             NodeType.text_card -> "[テキスト] \"$text\""
             NodeType.shape -> "[図形:${item.data["kind"] ?: "rect"}] \"$text\""
+            NodeType.comment_pin -> "[コメントピン] \"${item.name}\""
             else -> "\"$text\""
         }
     }
