@@ -25,6 +25,7 @@ import { useAccessStore } from '@/stores/access-store'
 import { onUnauthorized } from '@/lib/access-token'
 import { isEditableTarget } from '@/lib/keyboard'
 import { CommandPalette } from '@/components/search/CommandPalette'
+import { TasksMode } from '@/components/tasks/TasksMode'
 
 /** 自分の居場所をプレゼンス送信するだけのコンポーネント（Router 配下に置く必要がある） */
 function PresenceReporter() {
@@ -150,6 +151,7 @@ function AuthorizedApp() {
             <Route path="/" element={<Navigate to="/board" replace />} />
             <Route path="/board" element={<BoardMode />} />
             <Route path="/doc" element={<DocumentMode />} />
+            <Route path="/tasks" element={<TasksMode />} />
             <Route path="/ai" element={<AiMode />} />
             <Route path="/call" element={<CallMode />} />
           </Routes>

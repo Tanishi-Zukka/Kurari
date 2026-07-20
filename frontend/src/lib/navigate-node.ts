@@ -75,7 +75,12 @@ export function useNavigateToNode(): (node: KNode) => void {
         setSelected([node.id])
         return
       }
-      if (node.type === 'decision' || node.type === 'open_question' || node.type === 'task') {
+      if (node.type === 'task') {
+        setSelected([node.id])
+        navigate('/tasks')
+        return
+      }
+      if (node.type === 'decision' || node.type === 'open_question') {
         setPanelTab('decisions')
         setSelected([node.id])
         return

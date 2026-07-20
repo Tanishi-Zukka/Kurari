@@ -5,7 +5,7 @@ import { useHistoryStore } from '@/stores/history-store'
 import { useNavigateToNode } from '@/lib/navigate-node'
 import { usePresenceStore } from '@/stores/presence-store'
 import { cn } from '@/lib/utils'
-import { derivedFromOf, isTaskOverdue, taskData, type KNode, type NodeType, type TaskAssignee } from '@/types/model'
+import { derivedFromOf, isTaskOverdue, taskData, taskStatus, taskStatusPatch, type KNode, type NodeType, type TaskAssignee } from '@/types/model'
 import { CheckCheck, CornerUpLeft, HelpCircle, ListTodo } from 'lucide-react'
 import { STROKE_COLORS } from '@/components/board/BoardNodes'
 
@@ -60,7 +60,8 @@ export function DecisionsTab() {
 
   const toggleTask = (n: KNode) => {
     const cur = taskData(n).done
-    return patchTask(n, { done: !cur }, { done: cur })
+    const prevStatus = taskStatus(n)
+    return patchTask(n, taskStatusPatch(cur ? 'todo' : 'done'), { status: prevStatus, done: cur })
   }
 
   const jumpToSource = (n: KNode) => {

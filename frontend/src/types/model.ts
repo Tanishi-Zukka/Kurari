@@ -186,12 +186,20 @@ export interface TaskAssignee {
   color: StickyColor
 }
 
+export type TaskStatus = 'todo' | 'doing' | 'done'
+export const TASK_STATUSES: { status: TaskStatus; label: string }[] = [
+  { status: 'todo', label: '未着手' },
+  { status: 'doing', label: '進行中' },
+  { status: 'done', label: '完了' },
+]
+
 export interface TaskData {
   text: string
   done: boolean
   derivedFrom?: string
   dueDate?: string
   assignee?: TaskAssignee
+  status?: TaskStatus
 }
 
 /** decision / open_question 共用（既存の { text } と後方互換） */
@@ -221,7 +229,18 @@ export function taskData(node: KNode): TaskData {
     derivedFrom: typeof d.derivedFrom === 'string' ? d.derivedFrom : undefined,
     dueDate: typeof d.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.dueDate) ? d.dueDate : undefined,
     assignee,
+    status: d.status === 'todo' || d.status === 'doing' || d.status === 'done' ? d.status : undefined,
   }
+}
+
+export function taskStatus(node: KNode): TaskStatus {
+  const status = (node.data as { status?: unknown }).status
+  if (status === 'todo' || status === 'doing' || status === 'done') return status
+  return taskData(node).done ? 'done' : 'todo'
+}
+
+export function taskStatusPatch(status: TaskStatus): { status: TaskStatus; done: boolean } {
+  return { status, done: status === 'done' }
 }
 
 export function localToday(): string {
@@ -312,7 +331,7 @@ export interface AiStatus {
   runners?: AiRunnerInfo[]
 }
 
-export type PresenceMode = 'board' | 'doc' | 'ai' | 'call'
+export type PresenceMode = 'board' | 'doc' | 'tasks' | 'ai' | 'call'
 
 /** ボード上のカーソル位置（flow 座標） */
 export interface PresenceCursor {

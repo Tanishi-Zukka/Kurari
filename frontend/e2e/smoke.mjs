@@ -430,6 +430,30 @@ try {
   await page.getByTestId('chat-msg-user').first().waitFor()
   ok('派生元へジャンプ（タスク → チャットの元メッセージ）')
 
+  // 29a. かんばん: 3列 + 完了タスクの期限・担当表示
+  await page.getByRole('link', { name: /Tasks/ }).click()
+  await page.getByTestId('kanban-col-todo').waitFor()
+  const doneCard = page.getByTestId('kanban-col-done').getByTestId('kanban-card').first()
+  await doneCard.waitFor()
+  await doneCard.getByText('スモーク太郎').waitFor()
+  await doneCard.getByText('2020-01-02', { exact: false }).waitFor()
+  ok('かんばん3列に完了タスク・期限・担当を表示')
+
+  // 29b. 完了→進行中へドラッグ → status/done を同時永続化
+  await doneCard.dragTo(page.getByTestId('kanban-col-doing'))
+  await page.getByTestId('kanban-col-doing').getByTestId('kanban-card').first().waitFor()
+  await page.waitForTimeout(600)
+  const kanbanNodes = await (await fetch(`http://localhost:8080/api/nodes?workspaceId=${WS}`)).json()
+  const kanbanTask = kanbanNodes.find((n) => n.type === 'task')
+  if (kanbanTask?.data.status === 'doing' && kanbanTask?.data.done === false) ok('かんばん列移動がstatus/doneをAPIへ永続化')
+  else ng('かんばん列移動', `status=${kanbanTask?.data.status}, done=${kanbanTask?.data.done}`)
+
+  // 29c. リロード後も進行中列に残る
+  await page.reload()
+  await page.getByTestId('kanban-col-doing').getByTestId('kanban-card').first().waitFor()
+  ok('かんばん列がリロード後も維持')
+  await page.getByRole('link', { name: /Board/ }).click()
+
   // 30. 派生: 付箋→意思決定ログ化 → undoで取り消し
   await page.locator('[data-tree-id]', { hasText: 'スモークテスト付箋' }).first().click()
   await page.getByTestId('board-derive-decision').click()

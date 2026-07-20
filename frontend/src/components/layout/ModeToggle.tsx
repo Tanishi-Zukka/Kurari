@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { LayoutDashboard, FileText, Sparkles, Phone } from 'lucide-react'
+import { LayoutDashboard, FileText, ListTodo, Sparkles, Phone } from 'lucide-react'
 
 const MODES = [
   { to: '/board', label: 'Board', icon: LayoutDashboard, planned: false },
   { to: '/doc', label: 'Doc', icon: FileText, planned: false },
+  { to: '/tasks', label: 'Tasks', icon: ListTodo, planned: false },
   { to: '/ai', label: 'AI', icon: Sparkles, planned: false },
   { to: '/call', label: 'Call', icon: Phone, planned: false },
 ]

@@ -6,6 +6,7 @@ import type { PresenceMode } from '@/types/model'
 
 function modeOf(pathname: string): PresenceMode {
   if (pathname.startsWith('/doc')) return 'doc'
+  if (pathname.startsWith('/tasks')) return 'tasks'
   if (pathname.startsWith('/ai')) return 'ai'
   if (pathname.startsWith('/call')) return 'call'
   return 'board'

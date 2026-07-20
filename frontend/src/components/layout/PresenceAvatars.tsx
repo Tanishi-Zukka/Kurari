@@ -5,7 +5,7 @@ import { useUiStore } from '@/stores/ui-store'
 import { useEntityStore } from '@/stores/entity-store'
 import { STROKE_COLORS } from '@/components/board/BoardNodes'
 
-const MODE_LABELS: Record<string, string> = { board: 'Board', doc: 'Doc', ai: 'AI', call: 'Call' }
+const MODE_LABELS: Record<string, string> = { board: 'Board', doc: 'Doc', tasks: 'Tasks', ai: 'AI', call: 'Call' }
 
 /** ヘッダーに出すオンラインメンバーのアバター群。他人クリックでその人の場所へジャンプ、自分クリックで名前変更 */
 export function PresenceAvatars() {
