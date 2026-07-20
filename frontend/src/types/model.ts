@@ -366,6 +366,14 @@ export interface CallParticipant {
   screenStreamId: string | null
 }
 
+export interface TimerState {
+  phase: 'idle' | 'running' | 'paused'
+  endsAt: number | null
+  remainingMs: number
+  durationMs: number
+  startedBy: string | null
+}
+
 export type ServerEvent =
   | { type: 'node.created' | 'node.updated' | 'node.deleted'; payload: KNode }
   | { type: 'edge.created' | 'edge.updated' | 'edge.deleted'; payload: KEdge }
@@ -374,6 +382,7 @@ export type ServerEvent =
   | { type: 'presence.peers'; payload: PresencePeer[] }
   | { type: 'presence.updated'; payload: PresencePeer }
   | { type: 'reaction.ping'; payload: { emoji: string; x: number; y: number; boardId: string; sessionId: string; name: string; color: StickyColor } }
+  | { type: 'timer.state'; payload: TimerState }
   | { type: 'access.requested'; payload: { requestId: string; name: string; requestedAt: string } }
   | { type: 'access.resolved'; payload: { requestId: string; status: string } }
   | { type: 'call.joined'; payload: { participants: CallParticipant[] } }

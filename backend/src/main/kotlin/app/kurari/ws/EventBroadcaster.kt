@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * /ws に接続した全クライアントへアプリイベントを配信する。
- * 受信はプレゼンス（presence.join / presence.update）と通話シグナリング（call.*）のみ扱い、
+ * 受信はプレゼンス（presence.*）、通話シグナリング（call.*）、共有タイマー（timer.*）を扱い、
  * それ以外のデータ変更は従来どおり REST 経由。未知の受信 type は黙殺する。
  * call.signal の description / candidate は中身を検証せずそのまま宛先へ中継する。
  */
@@ -30,6 +30,7 @@ class EventBroadcaster(
     private val presence: PresenceRegistry,
     private val calls: CallRegistry,
     private val transcripts: CallTranscriptRegistry,
+    private val timers: TimerRegistry,
     @Lazy private val aiJobs: AiJobService,
     @Value("\${kurari.presence.offline-after-seconds}") private val presenceTtlSeconds: Long,
     @Value("\${kurari.call.minutes-min-chars:100}") private val minutesMinChars: Int,
@@ -69,6 +70,7 @@ class EventBroadcaster(
                     ),
                 )
                 sendTo(session, "presence.joined", mapOf("sessionId" to session.id, "peers" to presence.peers()))
+                timers.snapshot().takeIf { it.phase != "idle" }?.let { sendTo(session, "timer.state", it) }
                 broadcast("presence.peers", presence.peers())
             }
             "presence.update" -> {
@@ -94,6 +96,25 @@ class EventBroadcaster(
                     "emoji" to emoji, "x" to x, "y" to y, "boardId" to boardId,
                     "sessionId" to session.id, "name" to peer.name, "color" to peer.color,
                 ))
+            }
+            "timer.start" -> {
+                val peer = presence.peers().firstOrNull { it.sessionId == session.id } ?: return
+                val duration = payload["durationMs"]?.takeIf { it.isNumber }?.asLong() ?: return
+                if (duration !in 10_000L..10_800_000L) return
+                timers.start(duration, peer.name)
+                broadcast("timer.state", timers.snapshot())
+            }
+            "timer.pause" -> {
+                if (presence.peers().none { it.sessionId == session.id }) return
+                if (timers.pause()) broadcast("timer.state", timers.snapshot())
+            }
+            "timer.resume" -> {
+                if (presence.peers().none { it.sessionId == session.id }) return
+                if (timers.resume()) broadcast("timer.state", timers.snapshot())
+            }
+            "timer.stop" -> {
+                if (presence.peers().none { it.sessionId == session.id }) return
+                if (timers.stop()) broadcast("timer.state", timers.snapshot())
             }
             "call.join" -> {
                 calls.join(

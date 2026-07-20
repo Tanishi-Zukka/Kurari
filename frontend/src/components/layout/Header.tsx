@@ -6,6 +6,7 @@ import { InviteButton } from '@/components/access/InviteButton'
 import { useAccessStore } from '@/stores/access-store'
 import { Button } from '@/components/ui/primitives'
 import { PanelLeft, PanelRight, Search } from 'lucide-react'
+import { TimerWidget } from './TimerWidget'
 
 export function Header() {
   const workspaceId = useEntityStore((s) => s.workspaceId)
@@ -27,6 +28,7 @@ export function Header() {
       </div>
       <div className="flex items-center justify-center gap-2">
         <ModeToggle />
+        <TimerWidget />
         <Button
           data-testid="search-open"
           variant="outline"

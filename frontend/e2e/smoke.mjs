@@ -529,6 +529,20 @@ try {
   await remoteReaction.first().waitFor()
   await page.keyboard.press('Escape')
   ok('エフェメラルリアクション（2クライアント同期）')
+
+  // 共有タイマー: 開始が両クライアントへ同期
+  await page.getByTestId('timer-open').click()
+  await page.getByTestId('timer-preset-1').click()
+  await page.getByTestId('timer-countdown').filter({ hasText: /0:[45]\d/ }).waitFor()
+  await pageB.getByTestId('timer-countdown').filter({ hasText: /0:[45]\d/ }).waitFor()
+  ok('共有タイマー開始が2クライアントへ同期')
+
+  // 停止も両クライアントへ同期
+  await page.getByTestId('timer-countdown').click()
+  await page.getByTestId('timer-stop').click()
+  await page.getByTestId('timer-countdown').waitFor({ state: 'detached' })
+  await pageB.getByTestId('timer-countdown').waitFor({ state: 'detached' })
+  ok('共有タイマー停止が2クライアントへ同期')
   // 送信は 50ms throttle なので、出るまで動かし続けながら待つ
   const remoteCursor = page.locator('[data-testid="remote-cursor"][data-peer-name="スモーク花子"]')
   for (let i = 0; i < 50 && (await remoteCursor.count()) === 0; i++) {
