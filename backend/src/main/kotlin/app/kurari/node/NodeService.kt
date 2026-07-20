@@ -18,7 +18,7 @@ class NodeService(
 
     @Transactional(readOnly = true)
     fun listByWorkspace(workspaceId: UUID): List<NodeDto> =
-        repo.findByWorkspaceIdAndDeletedAtIsNull(workspaceId).map(NodeDto::from)
+        repo.findByWorkspaceIdAndDeletedAtIsNullOrderByCreatedAtAsc(workspaceId).map(NodeDto::from)
 
     @Transactional(readOnly = true)
     fun defaultWorkspace(): NodeDto =

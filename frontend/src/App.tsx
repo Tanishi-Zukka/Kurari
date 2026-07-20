@@ -136,7 +136,9 @@ function AuthorizedApp() {
   // 最初のボードを自動で開く
   useEffect(() => {
     if (!loaded || activeBoardId) return
-    const firstBoard = Object.values(nodes).find((n) => n.type === 'board')
+    const firstBoard = Object.values(nodes)
+      .filter((n) => n.type === 'board')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
     if (firstBoard) setActiveBoard(firstBoard.id)
   }, [loaded, activeBoardId, nodes, setActiveBoard])
 
