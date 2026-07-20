@@ -37,6 +37,10 @@ kurari:
     transcript-max-lines: 2000
     # 最後の退出時に議事録を生成する最小文字数
     minutes-min-chars: 100
+    # 通話中ライブ要約の定期実行間隔（ms）
+    live-summary-interval-ms: 60000
+    # 定期実行がライブ要約を作る最小の新規文字数（手動更新は1文字から）
+    live-summary-min-new-chars: 120
   access:
     # 招待トークンの有効期限（最新1本のみ有効。再発行で失効）
     invite-ttl-seconds: 3600

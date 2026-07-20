@@ -573,7 +573,29 @@ try {
   await page.getByTestId('call-leave').waitFor()
   ok('call: 他モードでも通話継続（フローティングバー）')
 
-  // 42. call: 退出で相手のタイルが消え、参加ボタンに戻る
+  // 42. call: 途中までの文字起こしを手動でライブ要約し、全参加者へ配信
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const ws = new WebSocket(`wss://${location.host}/ws`)
+    const timeout = window.setTimeout(() => reject(new Error('ライブ要約テスト用WSがタイムアウト')), 10000)
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'presence.join', payload: { clientId: 'e2e-live-summary', name: '要約テスト太郎', color: 'green', location: { mode: 'call' }, selectedIds: [] } }))
+      ws.send(JSON.stringify({ type: 'call.join', payload: { muted: false, cameraOff: false, screenStreamId: null } }))
+      for (const text of ['今日の進捗を共有します。', '設計案を確認しました。', '次回までに試作します。']) {
+        ws.send(JSON.stringify({ type: 'call.transcript', payload: { text } }))
+      }
+      window.setTimeout(() => ws.close(), 100)
+    }
+    ws.onerror = () => reject(new Error('ライブ要約テスト用WSに接続できません'))
+    ws.onclose = () => { window.clearTimeout(timeout); resolve() }
+  }))
+  await page.getByTestId('call-summary-toggle').click()
+  await page.getByTestId('call-summary-refresh').click()
+  await page.getByTestId('call-summary-point').first().waitFor({ timeout: 120000 })
+  await pageB.getByTestId('call-summary-toggle').click()
+  await pageB.getByTestId('call-summary-point').first().waitFor({ timeout: 120000 })
+  ok('call: ライブ要約が「今すぐ更新」でパネルに表示・全員に配信')
+
+  // 43. call: 退出で相手のタイルが消え、参加ボタンに戻る
   await pageB.getByTestId('call-leave').click()
   await page
     .locator('[data-testid="call-tile"][data-peer-name="スモーク花子"]')

@@ -26,7 +26,7 @@ cd frontend && npm run dev
 # 検証
 cd frontend && npx tsc -b          # 型チェック（lint は oxlint）
 cd backend && ./gradlew compileKotlin
-cd frontend && node e2e/smoke.mjs  # E2Eスモーク(50項目)。両サーバ起動が前提。mockなら約3分、実agent接続時はAI待ちが増える
+cd frontend && node e2e/smoke.mjs  # E2Eスモーク(51項目)。両サーバ起動が前提。mockなら約3分、実agent接続時はAI待ちが増える
 ```
 
 - スキーマ変更は Flyway マイグレーション必須（`backend/src/main/resources/db/migration/V*.sql`）。

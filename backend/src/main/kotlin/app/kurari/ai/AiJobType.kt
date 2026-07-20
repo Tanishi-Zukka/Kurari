@@ -68,6 +68,15 @@ enum class AiJobType(val instruction: String, val responseFormat: ResponseFormat
         ResponseFormat.text,
     ),
 
+    call_live_summary(
+        """あなたはチームのコンテキスト管理アプリ「Kurari」のAIアシスタントです。
+以下に渡すのは進行中の通話の、ここまでの文字起こしです（誤変換を含む場合があります）。
+ここまでの内容の要点を日本語で3〜7件に整理してください。
+出力はJSONオブジェクトのみ: {"points":["要点1","要点2"]}。各要点は60字以内。
+文字起こしにない事実は補わないでください。コードフェンス・前置き・後書きは一切禁止。""",
+        ResponseFormat.json,
+    ),
+
     project_brief(
         """あなたはチームのコンテキスト管理アプリ「Kurari」のAIアシスタントです。
 以下に渡すのは、あるプロジェクトのボード・ドキュメント・チャットの内容一式です。

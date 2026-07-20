@@ -17,6 +17,7 @@ interface CallState {
   muted: boolean
   cameraOff: boolean
   transcribing: boolean
+  joinedAt: string | null
 
   bindSender: (send: (msg: object) => void) => void
   /** カメラ・マイクを取得して通話に参加する */
@@ -315,6 +316,7 @@ export const useCallStore = create<CallState>((set, get) => {
     muted: false,
     cameraOff: false,
     transcribing: false,
+    joinedAt: null,
 
     bindSender: (fn) => {
       sender = fn
@@ -360,6 +362,7 @@ export const useCallStore = create<CallState>((set, get) => {
         muted: false,
         cameraOff: false,
         transcribing: false,
+        joinedAt: null,
       })
     },
 
@@ -426,7 +429,7 @@ export const useCallStore = create<CallState>((set, get) => {
     applyCallEvent: (ev) => {
       if (ev.type === 'call.joined') {
         // 参加確定。既存参加者ぶんの PeerConnection を張る
-        set({ status: 'joined' })
+        set((state) => ({ status: 'joined', joinedAt: state.joinedAt ?? new Date().toISOString() }))
         setParticipants(ev.payload.participants)
         syncPeers(ev.payload.participants)
         startTranscription()

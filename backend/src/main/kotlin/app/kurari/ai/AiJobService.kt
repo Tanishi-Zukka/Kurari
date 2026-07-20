@@ -136,6 +136,11 @@ class AiJobService(
                     ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "sourceText required for ${type.name}")
                 "# 通話の文字起こし\n\n" + text.take(12000)
             }
+            AiJobType.call_live_summary -> {
+                val text = req.sourceText?.takeIf { it.isNotBlank() }
+                    ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "sourceText required for ${type.name}")
+                "# 通話の文字起こし（ここまで）\n\n" + text.takeLast(8000)
+            }
             AiJobType.project_brief, AiJobType.detect_conflicts, AiJobType.extract_decisions ->
                 contextBuilder.buildProjectContext(target())
             AiJobType.chat_reply -> {
@@ -308,6 +313,8 @@ class AiJobService(
             """[{"topic":"(Mock) 論点の例","a":"ボード上の記述A","b":"ドキュメント上の記述B","hint":"Agent接続時に実際の矛盾を検出します"}]"""
         AiJobType.extract_decisions ->
             """{"decisions":["(Mock) 決定事項の例"],"openQuestions":["(Mock) 未解決事項の例"]}"""
+        AiJobType.call_live_summary ->
+            """{"points":["(Mock) 通話の要点1","(Mock) 通話の要点2","(Mock) 通話の要点3"]}"""
         else -> {
             val lines = context.lines().filter { it.startsWith("- ") }
             buildString {

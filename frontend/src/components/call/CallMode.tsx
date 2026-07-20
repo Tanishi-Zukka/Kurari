@@ -1,20 +1,25 @@
-import { Fragment } from 'react'
-import { Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Video, VideoOff } from 'lucide-react'
+import { Fragment, useState } from 'react'
+import { ListChecks, Mic, MicOff, Monitor, MonitorOff, Phone, PhoneOff, Video, VideoOff } from 'lucide-react'
 import type { StickyColor } from '@/types/model'
 import { useCallStore } from '@/stores/call-store'
 import { usePresenceStore } from '@/stores/presence-store'
 import { STROKE_COLORS } from '@/components/board/BoardNodes'
 import { cn } from '@/lib/utils'
+import { CallSummaryPanel } from './CallSummaryPanel'
 
 /** ワークスペース通話（1ルーム）。参加中はタイルグリッド、離脱中は参加カードを表示 */
 export function CallMode() {
   const status = useCallStore((s) => s.status)
+  const [summaryOpen, setSummaryOpen] = useState(false)
 
   if (status !== 'joined') return <JoinCard />
   return (
     <div className="flex h-full flex-col bg-neutral-900">
-      <TileGrid />
-      <ControlBar />
+      <div className="flex min-h-0 flex-1">
+        <TileGrid />
+        {summaryOpen && <CallSummaryPanel />}
+      </div>
+      <ControlBar summaryOpen={summaryOpen} onToggleSummary={() => setSummaryOpen((value) => !value)} />
     </div>
   )
 }
@@ -227,7 +232,7 @@ function ScreenTile({
   )
 }
 
-function ControlBar() {
+function ControlBar({ summaryOpen, onToggleSummary }: { summaryOpen: boolean; onToggleSummary: () => void }) {
   const muted = useCallStore((s) => s.muted)
   const cameraOff = useCallStore((s) => s.cameraOff)
   const screenStream = useCallStore((s) => s.screenStream)
@@ -251,6 +256,14 @@ function ControlBar() {
           文字起こし中
         </span>
       )}
+      <button
+        data-testid="call-summary-toggle"
+        onClick={onToggleSummary}
+        title="要点パネル"
+        className={cn('flex h-10 w-10 items-center justify-center rounded-full text-white transition-colors', summaryOpen ? 'bg-emerald-600' : 'bg-neutral-700 hover:bg-neutral-600')}
+      >
+        <ListChecks size={17} />
+      </button>
       <button
         data-testid="call-mic"
         onClick={toggleMute}

@@ -81,6 +81,9 @@ export const api = {
   createAiJob: (body: CreateAiJobRequest) =>
     request<AiJob>('/api/ai/jobs', { method: 'POST', body: JSON.stringify(body) }),
   getAiJob: (id: string) => request<AiJob>(`/api/ai/jobs/${id}`),
+  /** 通話ライブ要約を即時トリガー。新規発言がなければ204 */
+  triggerCallSummary: (body: { runner?: string }) =>
+    request<AiJob | undefined>('/api/call/live-summary', { method: 'POST', body: JSON.stringify(body) }),
 
   /** multipart/form-data のため JSON 用の request() ヘルパーは使わない（Content-Typeを固定しないこと） */
   uploadFile: async (file: File): Promise<{ url: string }> => {
