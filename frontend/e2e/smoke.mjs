@@ -399,6 +399,22 @@ try {
   await page.locator('[data-tree-id]', { hasText: /^タスク$/ }).first().waitFor()
   ok('メッセージ→タスク化（Decisionsタブ・ツリーに出現）')
 
+  // 27a. 期限設定 → API永続化 + 未完了の期限切れ表示
+  await page.getByTestId('task-due-input').first().fill('2020-01-02')
+  await page.waitForTimeout(600)
+  let taskMetaNodes = await (await fetch(`http://localhost:8080/api/nodes?workspaceId=${WS}`)).json()
+  let taskMeta = taskMetaNodes.find((n) => n.type === 'task')
+  if (taskMeta?.data.dueDate === '2020-01-02' && await page.locator('[data-testid="task-item"][data-overdue="true"]').count() > 0) ok('タスク期限がAPIに永続化され期限切れ表示')
+  else ng('タスク期限', `dueDate=${taskMeta?.data.dueDate}`)
+
+  // 27b. 自分を担当者に設定 → identityスナップショットをAPIへ永続化
+  await page.getByTestId('task-assignee-select').first().selectOption('e2e-main-client-0001')
+  await page.waitForTimeout(600)
+  taskMetaNodes = await (await fetch(`http://localhost:8080/api/nodes?workspaceId=${WS}`)).json()
+  taskMeta = taskMetaNodes.find((n) => n.type === 'task')
+  if (taskMeta?.data.assignee?.name === 'スモーク太郎') ok('タスク担当者がAPIに永続化')
+  else ng('タスク担当者', `assignee=${JSON.stringify(taskMeta?.data.assignee)}`)
+
   // 28. タスクの完了チェック → data.done がAPIに永続化
   await page.getByTestId('task-toggle').first().check()
   await page.waitForTimeout(600)

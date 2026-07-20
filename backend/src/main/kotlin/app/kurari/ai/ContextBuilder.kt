@@ -235,7 +235,11 @@ class ContextBuilder(
             for (q in openQuestions.sortedBy { it.createdAt }) dsb.appendLine("- [未解決] \"${lineText(q)}\"")
             for (t in tasks.sortedBy { it.createdAt }) {
                 val mark = if (t.data["done"] == true) "x" else " "
-                dsb.appendLine("- [$mark] \"${lineText(t)}\"")
+                val due = t.data["dueDate"] as? String
+                val assignee = (t.data["assignee"] as? Map<*, *>)?.get("name") as? String
+                val meta = listOfNotNull(due?.let { "期限: $it" }, assignee?.let { "担当: $it" })
+                val suffix = if (meta.isEmpty()) "" else " (${meta.joinToString(", ")})"
+                dsb.appendLine("- [$mark] \"${lineText(t)}\"$suffix")
             }
             sb.appendLine()
             sb.appendLine(truncate(dsb.toString().trimEnd(), 1200))

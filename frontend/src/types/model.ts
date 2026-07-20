@@ -180,10 +180,18 @@ export function commentPinData(node: KNode): CommentPinData {
  * 作られたノードは data.derivedFrom に元ノードの id を持ち、出所へジャンプできる。
  * 元ノードは変換せずに残す（type の書き換えはしない）。
  */
+export interface TaskAssignee {
+  clientId: string
+  name: string
+  color: StickyColor
+}
+
 export interface TaskData {
   text: string
   done: boolean
   derivedFrom?: string
+  dueDate?: string
+  assignee?: TaskAssignee
 }
 
 /** decision / open_question 共用（既存の { text } と後方互換） */
@@ -193,8 +201,38 @@ export interface DecisionData {
 }
 
 export function taskData(node: KNode): TaskData {
-  const d = node.data as Partial<TaskData>
-  return { text: d.text ?? '', done: d.done ?? false, derivedFrom: d.derivedFrom }
+  const d = node.data as Record<string, unknown>
+  const rawAssignee = d.assignee
+  let assignee: TaskAssignee | undefined
+  if (rawAssignee && typeof rawAssignee === 'object' && !Array.isArray(rawAssignee)) {
+    const value = rawAssignee as Record<string, unknown>
+    if (typeof value.clientId === 'string' && typeof value.name === 'string') {
+      const colors: StickyColor[] = ['yellow', 'blue', 'pink', 'green', 'gray']
+      assignee = {
+        clientId: value.clientId,
+        name: value.name,
+        color: colors.includes(value.color as StickyColor) ? value.color as StickyColor : 'gray',
+      }
+    }
+  }
+  return {
+    text: typeof d.text === 'string' ? d.text : '',
+    done: typeof d.done === 'boolean' ? d.done : false,
+    derivedFrom: typeof d.derivedFrom === 'string' ? d.derivedFrom : undefined,
+    dueDate: typeof d.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.dueDate) ? d.dueDate : undefined,
+    assignee,
+  }
+}
+
+export function localToday(): string {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
+export function isTaskOverdue(task: TaskData): boolean {
+  return !!task.dueDate && task.dueDate < localToday() && !task.done
 }
 
 /** 派生元参照。どの type のノードでも読める */

@@ -3,9 +3,11 @@ import { useEntityStore } from '@/stores/entity-store'
 import { useUiStore } from '@/stores/ui-store'
 import { useHistoryStore } from '@/stores/history-store'
 import { useNavigateToNode } from '@/lib/navigate-node'
+import { usePresenceStore } from '@/stores/presence-store'
 import { cn } from '@/lib/utils'
-import { derivedFromOf, taskData, type KNode, type NodeType } from '@/types/model'
+import { derivedFromOf, isTaskOverdue, taskData, type KNode, type NodeType, type TaskAssignee } from '@/types/model'
 import { CheckCheck, CornerUpLeft, HelpCircle, ListTodo } from 'lucide-react'
+import { STROKE_COLORS } from '@/components/board/BoardNodes'
 
 /**
  * Decisions タブ: プロジェクトの合意状態（決定事項・未解決・タスク）を一覧する。
@@ -17,6 +19,19 @@ export function DecisionsTab() {
   const selectedIds = useUiStore((s) => s.selectedIds)
   const setSelected = useUiStore((s) => s.setSelected)
   const navigateToNode = useNavigateToNode()
+  const identity = usePresenceStore((s) => s.identity)
+  const peers = usePresenceStore((s) => s.peers)
+
+  const assigneeCandidates = useMemo(() => {
+    const byClient = new Map<string, TaskAssignee>()
+    byClient.set(identity.clientId, { clientId: identity.clientId, name: identity.name || '匿名', color: identity.color })
+    for (const peer of Object.values(peers)) {
+      if (peer.clientId !== identity.clientId && !byClient.has(peer.clientId)) {
+        byClient.set(peer.clientId, { clientId: peer.clientId, name: peer.name || '匿名', color: peer.color })
+      }
+    }
+    return [...byClient.values()]
+  }, [identity, peers])
 
   const byType = useMemo(() => {
     const result: Record<'decision' | 'open_question' | 'task', KNode[]> = {
@@ -35,14 +50,17 @@ export function DecisionsTab() {
     return result
   }, [nodes])
 
-  /** done トグル（undo 対応） */
-  const toggleTask = async (n: KNode) => {
-    const cur = taskData(n).done
-    await updateNode(n.id, { data: { done: !cur } })
+  const patchTask = async (n: KNode, next: Record<string, unknown>, prev: Record<string, unknown>) => {
+    await updateNode(n.id, { data: next })
     useHistoryStore.getState().push({
-      undo: () => updateNode(n.id, { data: { done: cur } }),
-      redo: () => updateNode(n.id, { data: { done: !cur } }),
+      undo: () => updateNode(n.id, { data: prev }),
+      redo: () => updateNode(n.id, { data: next }),
     })
+  }
+
+  const toggleTask = (n: KNode) => {
+    const cur = taskData(n).done
+    return patchTask(n, { done: !cur }, { done: cur })
   }
 
   const jumpToSource = (n: KNode) => {
@@ -55,7 +73,9 @@ export function DecisionsTab() {
     const sourceId = derivedFromOf(n)
     const sourceExists = !!(sourceId && nodes[sourceId])
     const isTask = n.type === 'task'
-    const done = isTask && taskData(n).done
+    const task = isTask ? taskData(n) : null
+    const done = !!task?.done
+    const overdue = !!task && isTaskOverdue(task)
     const text = typeof n.data.text === 'string' && n.data.text ? n.data.text : n.name
     return (
       <li
@@ -66,6 +86,7 @@ export function DecisionsTab() {
         )}
         onClick={() => setSelected([n.id])}
         data-testid={isTask ? 'task-item' : `${n.type}-item`}
+        data-overdue={overdue ? 'true' : undefined}
       >
         {isTask && (
           <input
@@ -78,14 +99,34 @@ export function DecisionsTab() {
             data-testid="task-toggle"
           />
         )}
-        <span
-          className={cn(
-            'min-w-0 flex-1 whitespace-pre-wrap break-words text-neutral-800',
-            done && 'text-neutral-400 line-through',
+        <div className="min-w-0 flex-1">
+          <span className={cn('whitespace-pre-wrap break-words text-neutral-800', done && 'text-neutral-400 line-through')}>{text}</span>
+          {task && (
+            <div className="mt-1 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+              <input
+                type="date"
+                data-testid="task-due-input"
+                value={task.dueDate ?? ''}
+                className={cn('min-w-0 w-[118px] rounded border border-neutral-200 bg-white px-1 py-0.5 text-[10px]', overdue && 'text-red-600')}
+                onChange={(e) => void patchTask(n, { dueDate: e.target.value || null }, { dueDate: task.dueDate ?? null })}
+              />
+              {task.assignee && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: STROKE_COLORS[task.assignee.color] ?? STROKE_COLORS.gray }} />}
+              <select
+                data-testid="task-assignee-select"
+                value={task.assignee?.clientId ?? ''}
+                className="min-w-0 flex-1 rounded border border-neutral-200 bg-white px-1 py-0.5 text-[10px]"
+                onChange={(e) => {
+                  const next = assigneeCandidates.find((candidate) => candidate.clientId === e.target.value)
+                  void patchTask(n, { assignee: next ?? null }, { assignee: task.assignee ?? null })
+                }}
+              >
+                <option value="">担当なし</option>
+                {assigneeCandidates.map((candidate) => <option key={candidate.clientId} value={candidate.clientId}>{candidate.name}{candidate.clientId === identity.clientId ? '（自分）' : ''}</option>)}
+                {task.assignee && !assigneeCandidates.some((candidate) => candidate.clientId === task.assignee?.clientId) && <option value={task.assignee.clientId}>{task.assignee.name}</option>}
+              </select>
+            </div>
           )}
-        >
-          {text}
-        </span>
+        </div>
         {sourceId && (
           <button
             className="invisible mt-0.5 shrink-0 rounded p-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-40 group-hover:visible"
