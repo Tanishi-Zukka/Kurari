@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/primitives'
 import { cn } from '@/lib/utils'
 import { useReactFlow } from '@xyflow/react'
@@ -19,6 +19,7 @@ import {
   CheckCheck,
   MessageCircle,
   SmilePlus,
+  Vote,
 } from 'lucide-react'
 import { useHistoryStore } from '@/stores/history-store'
 import { useEntityStore } from '@/stores/entity-store'
@@ -26,6 +27,9 @@ import { useUiStore } from '@/stores/ui-store'
 import { deriveNodes, type DeriveKind } from '@/lib/derive'
 import type { StickyColor } from '@/types/model'
 import { REACTION_EMOJIS } from '@/lib/reactions'
+import { boardItemIds } from '@/lib/board-layout'
+import { myRemaining, voteSessionOf } from '@/lib/votes'
+import { usePresenceStore } from '@/stores/presence-store'
 
 /** 派生（タスク化・意思決定ログ化）の対象になるボード要素種別 */
 const DERIVABLE_TYPES = ['sticky', 'text_card', 'shape'] as const
@@ -80,8 +84,39 @@ export function BoardToolbar({
   const redo = useHistoryStore((s) => s.redo)
   const showHandles = useUiStore((s) => s.showHandles)
   const toggleShowHandles = useUiStore((s) => s.toggleShowHandles)
+  const activeBoardId = useUiStore((s) => s.activeBoardId)
+  const voteMode = useUiStore((s) => s.voteMode)
+  const setVoteMode = useUiStore((s) => s.setVoteMode)
   const nodes = useEntityStore((s) => s.nodes)
+  const updateNode = useEntityStore((s) => s.updateNode)
+  const identity = usePresenceStore((s) => s.identity)
   const [derivingKind, setDerivingKind] = useState<DeriveKind | null>(null)
+  const [voteOpen, setVoteOpen] = useState(false)
+  const [voteBudget, setVoteBudget] = useState(3)
+  const voteSession = voteSessionOf(activeBoardId ? nodes[activeBoardId] : undefined)
+  const remaining = activeBoardId && voteSession ? myRemaining(nodes, activeBoardId, voteSession, identity.clientId) : 0
+
+  useEffect(() => {
+    if (!voteSession?.active) setVoteMode(false)
+  }, [voteSession?.active, setVoteMode])
+
+  const startVoting = async () => {
+    if (!activeBoardId) return
+    for (const id of boardItemIds(nodes, activeBoardId)) {
+      const node = nodes[id]
+      if (node?.type === 'sticky' && node.data.votes) await updateNode(id, { data: { votes: null } })
+    }
+    await updateNode(activeBoardId, { data: { voteSession: { active: true, budget: voteBudget, startedBy: identity.clientId, startedAt: new Date().toISOString() } } })
+    setVoteMode(true)
+    setVoteOpen(false)
+  }
+
+  const endVoting = async () => {
+    if (!activeBoardId || !voteSession) return
+    await updateNode(activeBoardId, { data: { voteSession: { ...voteSession, active: false, endedAt: new Date().toISOString() } } })
+    setVoteMode(false)
+    setVoteOpen(false)
+  }
 
   const hasSelection = selectedIds.length > 0
 
@@ -140,6 +175,38 @@ export function BoardToolbar({
           ))}
         </div>
       )}
+      <div className="relative">
+        <Button
+          size="icon"
+          variant={voteMode ? 'primary' : 'ghost'}
+          data-testid="vote-toggle"
+          title="付箋投票"
+          onClick={() => {
+            onSelectTool()
+            setVoteOpen((value) => !value)
+            if (voteSession?.active) setVoteMode(!voteMode)
+          }}
+        >
+          <Vote size={15} />
+        </Button>
+        {voteOpen && (
+          <div className="absolute left-0 top-full mt-1 w-48 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+            {voteSession?.active ? (
+              <>
+                <p data-testid="vote-remaining" className="mb-2 text-xs text-neutral-600">残り {remaining} 票</p>
+                <button data-testid="vote-end" className="w-full rounded bg-red-50 px-2 py-1.5 text-xs text-red-600" onClick={() => void endVoting()}>投票を終了</button>
+              </>
+            ) : (
+              <>
+                <label className="mb-2 flex items-center justify-between gap-2 text-xs text-neutral-600">1人あたり
+                  <select data-testid="vote-budget" value={voteBudget} onChange={(e) => setVoteBudget(Number(e.target.value))} className="rounded border border-neutral-300 bg-white px-1 py-0.5">{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}票</option>)}</select>
+                </label>
+                <button data-testid="vote-start" className="w-full rounded bg-neutral-800 px-2 py-1.5 text-xs text-white" onClick={() => void startVoting()}>投票を開始</button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
       <Button
         size="icon"
         variant={placing === 'comment_pin' ? 'primary' : 'ghost'}

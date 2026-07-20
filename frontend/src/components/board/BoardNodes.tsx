@@ -6,6 +6,8 @@ import { useHistoryStore } from '@/stores/history-store'
 import { useUiStore } from '@/stores/ui-store'
 import type { ShapeKind, StickyColor } from '@/types/model'
 import { ReactionChips } from './ReactionChips'
+import { myRemaining, totalVotes, votesOf, voteSessionOf } from '@/lib/votes'
+import { usePresenceStore } from '@/stores/presence-store'
 
 export interface BoardItemFlowData {
   text: string
@@ -254,6 +256,28 @@ function ItemResizer({
 }
 
 export function StickyNode({ id, data, selected }: NodeProps<BoardItemFlowNode>) {
+  const nodes = useEntityStore((s) => s.nodes)
+  const updateNode = useEntityStore((s) => s.updateNode)
+  const activeBoardId = useUiStore((s) => s.activeBoardId)
+  const voteMode = useUiStore((s) => s.voteMode)
+  const clientId = usePresenceStore((s) => s.identity.clientId)
+  const node = nodes[id]
+  const session = voteSessionOf(activeBoardId ? nodes[activeBoardId] : undefined)
+  const votes = node ? votesOf(node) : {}
+  const ownVotes = votes[clientId] ?? 0
+  const total = node ? totalVotes(node) : 0
+  const remaining = activeBoardId && session ? myRemaining(nodes, activeBoardId, session, clientId) : 0
+  const castVote = () => {
+    if (!node || !session?.active || remaining <= 0) return
+    void updateNode(id, { data: { votes: { ...votes, [clientId]: ownVotes + 1 } } })
+  }
+  const retractVote = () => {
+    if (!node || ownVotes <= 0) return
+    const next = { ...votes }
+    if (ownVotes === 1) delete next[clientId]
+    else next[clientId] = ownVotes - 1
+    void updateNode(id, { data: { votes: Object.keys(next).length ? next : null } })
+  }
   return (
     <div
       className={cn(
@@ -266,6 +290,19 @@ export function StickyNode({ id, data, selected }: NodeProps<BoardItemFlowNode>)
       <ItemResizer id={id} selected={selected} minWidth={80} minHeight={80} />
       <ItemHandles />
       <ReactionChips nodeId={id} />
+      {voteMode && session?.active && (
+        <div className="nodrag absolute inset-0 z-20 cursor-pointer" title={remaining > 0 ? 'クリックして投票' : '残り票はありません'} onClick={(e) => { e.stopPropagation(); castVote() }} onDoubleClick={(e) => e.stopPropagation()} />
+      )}
+      {/* active中の秘匿は表示層のみ。他人票は同期データに含まれるが、ここでは自分票だけ描画する。 */}
+      {voteMode && session?.active && ownVotes > 0 && (
+        <div data-testid="vote-badge-own" className="nodrag absolute -right-2 -top-2 z-30 flex items-center gap-1 rounded-full bg-neutral-800 px-2 py-0.5 text-[10px] font-semibold text-white shadow" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+          {ownVotes}票
+          <button data-testid="vote-retract" className="rounded-full bg-white/20 px-1" onClick={retractVote}>−</button>
+        </div>
+      )}
+      {session && !session.active && total > 0 && (
+        <div data-testid="vote-badge-total" className="nodrag absolute -right-2 -top-2 z-30 rounded-full bg-neutral-800 px-2 py-0.5 text-[10px] font-semibold text-white shadow" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>🗳 {total}</div>
+      )}
       <EditableText
         id={id}
         text={data.text}

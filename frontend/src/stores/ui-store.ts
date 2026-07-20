@@ -24,6 +24,7 @@ interface UiState {
   /** 接続ハンドルを常時表示するか（トグル可能。既定は選択/ホバー時のみ表示） */
   showHandles: boolean
   searchOpen: boolean
+  voteMode: boolean
 
   setActiveBoard: (id: string | null) => void
   setActiveDoc: (id: string | null) => void
@@ -42,6 +43,7 @@ interface UiState {
   toggleShowHandles: () => void
   openSearch: () => void
   closeSearch: () => void
+  setVoteMode: (value: boolean) => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -59,6 +61,7 @@ export const useUiStore = create<UiState>((set) => ({
   docScrollBlockId: null,
   showHandles: false,
   searchOpen: false,
+  voteMode: false,
 
   setActiveBoard: (id) => set({ activeBoardId: id }),
   setActiveDoc: (id) => set({ activeDocId: id }),
@@ -81,4 +84,5 @@ export const useUiStore = create<UiState>((set) => ({
   toggleShowHandles: () => set((s) => ({ showHandles: !s.showHandles })),
   openSearch: () => set({ searchOpen: true }),
   closeSearch: () => set({ searchOpen: false }),
+  setVoteMode: (voteMode) => set({ voteMode }),
 }))

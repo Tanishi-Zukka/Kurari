@@ -180,6 +180,8 @@ function BoardCanvas() {
   const clearPanRequest = useUiStore((s) => s.clearPanRequest)
   const panPointRequest = useUiStore((s) => s.panPointRequest)
   const clearPanPointRequest = useUiStore((s) => s.clearPanPointRequest)
+  const voteMode = useUiStore((s) => s.voteMode)
+  const setVoteMode = useUiStore((s) => s.setVoteMode)
 
   const { setCenter, screenToFlowPosition, getZoom, getInternalNode, fitView } = useReactFlow()
   const nodesInitialized = useNodesInitialized()
@@ -772,6 +774,10 @@ function BoardCanvas() {
         setReactionEmoji(null)
         return
       }
+      if (e.key === 'Escape' && voteMode) {
+        setVoteMode(false)
+        return
+      }
       if (e.key === 'Escape' && activeTool === 'pen') {
         setActiveTool('select')
         return
@@ -791,7 +797,7 @@ function BoardCanvas() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeTool, placing, reactionEmoji])
+  }, [activeTool, placing, reactionEmoji, voteMode, setVoteMode])
 
   const onPaneDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -987,7 +993,7 @@ function BoardCanvas() {
         panOnScroll
         selectionOnDrag={!isPen}
         selectionMode={SelectionMode.Partial}
-        nodesDraggable={!isPen}
+        nodesDraggable={!isPen && !voteMode}
         elementsSelectable={!isPen}
       >
         <Background gap={20} size={1.5} />
@@ -1129,11 +1135,13 @@ function BoardCanvas() {
           setPlacing(null)
           setPlacePos(null)
           setReactionEmoji(null)
+          setVoteMode(false)
         }}
         onPenTool={() => {
           setPlacing(null)
           setPlacePos(null)
           setReactionEmoji(null)
+          setVoteMode(false)
           setActiveTool((t) => (t === 'pen' ? 'select' : 'pen'))
         }}
         placing={placing}
@@ -1141,9 +1149,10 @@ function BoardCanvas() {
           setActiveTool('select')
           setPlacePos(null)
           setReactionEmoji(null)
+          setVoteMode(false)
           setPlacing((cur) => (cur === kind ? null : kind))
         }}
-        onImageClick={() => fileInputRef.current?.click()}
+        onImageClick={() => { setVoteMode(false); fileInputRef.current?.click() }}
         selectedIds={selectedIds}
         onRecolor={recolorSelected}
         color={color}
@@ -1155,6 +1164,7 @@ function BoardCanvas() {
           setPlacing(null)
           setActiveTool('select')
           setReactionEmoji(emoji)
+          setVoteMode(false)
         }}
       />
       <BoardZoomControl />

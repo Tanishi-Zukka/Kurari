@@ -161,7 +161,7 @@ backend / frontend / (任意で agent) を起動した状態で:
 cd frontend && node e2e/smoke.mjs
 ```
 
-以下の58項目を検証します：
+以下の60項目を検証します：
 - ツリー同期・付箋編集・コメント・永続化
 - UI モード切替（Board / Document / Tasks / AI Mode）
 - Document Mode（見出し・インデント・テキストエディタ）

@@ -28,10 +28,10 @@ const FIRST_BOARD = '00000000-0000-0000-0000-000000000003'
   }
   const junkNames = ['スモークテキスト', '(empty sticky)', '(image)', '新しいボード']
   for (const n of nodes) {
-    if (n.data?.reactions) {
+    if (n.data?.reactions || n.data?.votes || n.data?.voteSession) {
       await fetch(`http://localhost:8080/api/nodes/${n.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: { reactions: null } }),
+        body: JSON.stringify({ data: { reactions: null, votes: null, voteSession: null } }),
       })
     }
     if (n.type === 'section') continue
@@ -154,6 +154,24 @@ try {
   await selectedSticky.getByTestId('reaction-emoji-👍').click()
   await thumbsChip.waitFor()
   ok('永続リアクション（追加・トグル）')
+
+  // 付箋投票: budget 3で開始し、同じ付箋へ2票
+  await page.getByTestId('vote-toggle').click()
+  await page.getByTestId('vote-start').click()
+  await selectedSticky.click({ position: { x: 80, y: 80 } })
+  await selectedSticky.click({ position: { x: 80, y: 80 } })
+  await selectedSticky.getByTestId('vote-badge-own').getByText('2票').waitFor()
+  ok('付箋投票セッションで自分の2票を表示')
+
+  // 終了で合計票を公開し、票と終了状態を永続化
+  await page.getByTestId('vote-toggle').click()
+  await page.getByTestId('vote-end').click()
+  await selectedSticky.getByTestId('vote-badge-total').getByText('2', { exact: false }).waitFor()
+  const voteNodes = await (await fetch(`http://localhost:8080/api/nodes?workspaceId=${WS}`)).json()
+  const votedSticky = voteNodes.find((n) => n.type === 'sticky' && String(n.data.text ?? '').includes('スモークテスト付箋'))
+  const votedBoard = voteNodes.find((n) => n.id === FIRST_BOARD)
+  if (votedSticky?.data.votes?.['e2e-main-client-0001'] === 2 && votedBoard?.data.voteSession?.active === false) ok('投票結果とセッション終了がAPIに永続化')
+  else ng('付箋投票永続化', `votes=${JSON.stringify(votedSticky?.data.votes)}, active=${votedBoard?.data.voteSession?.active}`)
 
   // 7. AIタブ → 要約実行（Agent経由の実要約。最大120秒待つ）
   await page.getByRole('button', { name: 'AI' }).click()
@@ -392,6 +410,8 @@ try {
 
   // 27. 派生: チャットメッセージ→タスク化 → Decisionsタブとツリーに出現
   await page.getByRole('link', { name: /Board/ }).click()
+  await page.locator('[data-tree-id]', { hasText: /^First Board$/ }).first().click()
+  await page.locator('.react-flow__node', { hasText: 'Kurariへようこそ' }).first().waitFor()
   await page.getByRole('button', { name: 'Chat' }).click()
   await page.getByTestId('chat-msg-user').first().hover()
   await page.getByTestId('msg-action-task').first().click()
